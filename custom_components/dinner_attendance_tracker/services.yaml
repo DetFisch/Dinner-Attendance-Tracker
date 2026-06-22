@@ -1,0 +1,143 @@
+add_person:
+  name: Person hinzufügen
+  description: Fügt eine Home Assistant person-Entity als Teilnehmer hinzu.
+  fields:
+    entity_id:
+      name: Tracker Entity
+      description: Sensor des Dinner Attendance Trackers. Nur nötig, wenn mehrere Tracker existieren.
+      selector:
+        entity:
+          domain: sensor
+    person_entity_id:
+      name: Person
+      description: Home Assistant person-Entity.
+      required: true
+      selector:
+        entity:
+          domain: person
+    name:
+      name: Anzeigename
+      description: Optionaler Anzeigename statt Friendly Name der Person.
+      selector:
+        text:
+
+add_guest:
+  name: Gast hinzufügen
+  description: Fügt einen benutzerdefinierten Gast hinzu.
+  fields:
+    entity_id:
+      name: Tracker Entity
+      description: Sensor des Dinner Attendance Trackers. Nur nötig, wenn mehrere Tracker existieren.
+      selector:
+        entity:
+          domain: sensor
+    name:
+      name: Name
+      description: Name des Gastes.
+      required: true
+      selector:
+        text:
+
+remove_participant:
+  name: Teilnehmer entfernen
+  description: Entfernt eine Person oder einen Gast aus dem Tracker und aus allen Tagen.
+  fields:
+    entity_id:
+      name: Tracker Entity
+      description: Sensor des Dinner Attendance Trackers. Nur nötig, wenn mehrere Tracker existieren.
+      selector:
+        entity:
+          domain: sensor
+    participant_id:
+      name: Teilnehmer-ID
+      description: ID aus dem participants-Attribut.
+      required: true
+      selector:
+        text:
+
+set_attendance:
+  name: Anwesenheit setzen
+  description: Setzt Abendessen und/oder Übernachtung für einen Teilnehmer an einem Wochentag.
+  fields:
+    entity_id:
+      name: Tracker Entity
+      description: Sensor des Dinner Attendance Trackers. Nur nötig, wenn mehrere Tracker existieren.
+      selector:
+        entity:
+          domain: sensor
+    day:
+      name: Wochentag
+      required: true
+      selector:
+        select:
+          options:
+            - label: Montag
+              value: mon
+            - label: Dienstag
+              value: tue
+            - label: Mittwoch
+              value: wed
+            - label: Donnerstag
+              value: thu
+            - label: Freitag
+              value: fri
+            - label: Samstag
+              value: sat
+            - label: Sonntag
+              value: sun
+    participant_id:
+      name: Teilnehmer-ID
+      description: ID aus dem participants-Attribut.
+      required: true
+      selector:
+        text:
+    dinner:
+      name: Abendessen
+      selector:
+        boolean:
+    overnight:
+      name: Übernachtung
+      selector:
+        boolean:
+
+clear_day:
+  name: Tag leeren
+  description: Entfernt alle Einträge für einen Wochentag.
+  fields:
+    entity_id:
+      name: Tracker Entity
+      description: Sensor des Dinner Attendance Trackers. Nur nötig, wenn mehrere Tracker existieren.
+      selector:
+        entity:
+          domain: sensor
+    day:
+      name: Wochentag
+      required: true
+      selector:
+        select:
+          options:
+            - label: Montag
+              value: mon
+            - label: Dienstag
+              value: tue
+            - label: Mittwoch
+              value: wed
+            - label: Donnerstag
+              value: thu
+            - label: Freitag
+              value: fri
+            - label: Samstag
+              value: sat
+            - label: Sonntag
+              value: sun
+
+reset_week:
+  name: Woche leeren
+  description: Entfernt alle Einträge aus allen sieben Wochentagen.
+  fields:
+    entity_id:
+      name: Tracker Entity
+      description: Sensor des Dinner Attendance Trackers. Nur nötig, wenn mehrere Tracker existieren.
+      selector:
+        entity:
+          domain: sensor

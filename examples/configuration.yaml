@@ -1,0 +1,12 @@
+dinner_attendance_tracker:
+  id: dinner_attendance
+  name: Abendessen
+
+# Optional mehrere unabhängige Tracker:
+#
+# dinner_attendance_tracker:
+#   trackers:
+#     - id: dinner_attendance
+#       name: Abendessen
+#     - id: weekend_guests
+#       name: Wochenendgäste

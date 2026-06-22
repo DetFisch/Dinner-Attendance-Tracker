@@ -1,0 +1,13 @@
+{
+  "domain": "dinner_attendance_tracker",
+  "name": "Dinner Attendance Tracker",
+  "codeowners": ["@DetFisch"],
+  "dependencies": ["http"],
+  "documentation": "https://github.com/DetFisch/Dinner-Attendance-Tracker",
+  "config_flow": true,
+  "integration_type": "service",
+  "issue_tracker": "https://github.com/DetFisch/Dinner-Attendance-Tracker/issues",
+  "requirements": [],
+  "version": "0.1.0",
+  "iot_class": "local_push"
+}

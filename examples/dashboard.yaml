@@ -1,0 +1,8 @@
+views:
+  - title: Abendessen
+    path: dinner
+    badges: []
+    cards:
+      - type: custom:dinner-attendance-card
+        entity: sensor.dinner_attendance
+        name: Abendessen
