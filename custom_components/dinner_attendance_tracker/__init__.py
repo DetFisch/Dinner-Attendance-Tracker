@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -41,7 +41,6 @@ from .const import (
     SERVICE_RESET_WEEK,
     SERVICE_SET_ATTENDANCE,
 )
-from .manager import DinnerAttendanceManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -167,6 +166,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Dinner Attendance Tracker from a config entry."""
+    from .manager import DinnerAttendanceManager
+
     domain_data = _ensure_domain_data(hass)
     await _ensure_card_registered(hass)
 
@@ -222,13 +223,25 @@ async def _ensure_card_registered(hass: HomeAssistant) -> None:
     if domain_data[DATA_CARD_REGISTERED]:
         return
 
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(CARD_URL_PATH, str(CARD_FILE_PATH), cache_headers=True)]
-    )
+    try:
+        from homeassistant.components.http import StaticPathConfig
+    except ImportError:
+        result = hass.http.async_register_static_path(
+            CARD_URL_PATH,
+            str(CARD_FILE_PATH),
+            cache_headers=True,
+        )
+        if inspect.isawaitable(result):
+            await result
+    else:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(CARD_URL_PATH, str(CARD_FILE_PATH), cache_headers=True)]
+        )
+
     domain_data[DATA_CARD_REGISTERED] = True
 
 
-def _resolve_manager(hass: HomeAssistant, call_data: dict[str, Any]) -> DinnerAttendanceManager:
+def _resolve_manager(hass: HomeAssistant, call_data: dict[str, Any]) -> Any:
     domain_data = _ensure_domain_data(hass)
     entries = domain_data[DATA_ENTRIES]
 
@@ -238,7 +251,7 @@ def _resolve_manager(hass: HomeAssistant, call_data: dict[str, Any]) -> DinnerAt
         tracker_id = state.attributes.get("tracker_id") if state is not None else None
         if tracker_id:
             for entry_data in entries.values():
-                manager: DinnerAttendanceManager = entry_data[DATA_MANAGER]
+                manager = entry_data[DATA_MANAGER]
                 if manager.tracker_id() == tracker_id:
                     return manager
         raise HomeAssistantError("Unknown tracker entity_id")
