@@ -2,7 +2,7 @@
 
 Home Assistant Custom Integration mit gebündelter Lovelace-Card für einen einfachen Wochenplan:
 
-- alle sieben Wochentage sichtbar
+- heute und die nächsten sechs Tage sichtbar
 - pro Tag getrennte Anzeige für Abendessen und Übernachtung
 - Home Assistant `person`-Entities auswählbar
 - zusätzliche Gäste als freie Namen
@@ -14,7 +14,7 @@ Home Assistant Custom Integration mit gebündelter Lovelace-Card für einen einf
 2. Home Assistant neu starten.
 3. Integration hinzufügen: `Einstellungen` > `Geräte & Dienste` > `Integration hinzufügen` > `Dinner Attendance Tracker`. Es wird automatisch ein Tracker `dinner_attendance` angelegt.
 4. Lovelace Resource hinzufügen:
-   - URL: `/dinner_attendance_tracker/dinner-attendance-card.js?v=0.2.4`
+   - URL: `/dinner_attendance_tracker/dinner-attendance-card.js?v=0.2.7`
    - Typ: `module`
 5. Browser Hard-Reload (`Ctrl+F5`).
 
@@ -51,7 +51,7 @@ default_overnight:
 
 ## Nutzung
 
-Die Karte zeigt jeden Wochentag mit zwei Zeilen:
+Die Karte zeigt die nächsten sieben Tage ab heute mit zwei Zeilen:
 
 - Besteck: wer zum Abendessen da ist
 - Bett: wer übernachtet

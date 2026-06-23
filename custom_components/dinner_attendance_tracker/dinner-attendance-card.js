@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.2.4"
+const DAT_CARD_VERSION = "0.2.7"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -41,6 +41,14 @@ class DinnerAttendanceCard extends HTMLElement {
     this._syncEntity()
     this._renderState()
     this._syncConfiguredPeople()
+  }
+
+  connectedCallback() {
+    this._scheduleDateRefresh()
+  }
+
+  disconnectedCallback() {
+    window.clearTimeout(this._dateRefreshTimer)
   }
 
   getCardSize() {
@@ -108,7 +116,7 @@ class DinnerAttendanceCard extends HTMLElement {
 
         .day-row {
           display: grid;
-          grid-template-columns: 44px minmax(0, 1fr);
+          grid-template-columns: 88px minmax(0, 1fr);
           gap: 10px;
           align-items: stretch;
           border: 0;
@@ -131,11 +139,25 @@ class DinnerAttendanceCard extends HTMLElement {
         .day-label {
           display: flex;
           align-items: center;
-          justify-content: center;
+          justify-content: flex-start;
+          gap: 6px;
+          box-sizing: border-box;
+          padding: 0 10px;
           min-height: 58px;
           border-right: 1px solid var(--divider-color);
           font-weight: 700;
           color: var(--primary-text-color);
+        }
+
+        .day-name {
+          white-space: nowrap;
+        }
+
+        .day-date {
+          color: var(--secondary-text-color);
+          font-size: 0.8rem;
+          font-weight: 500;
+          white-space: nowrap;
         }
 
         .day-lines {
@@ -731,6 +753,19 @@ class DinnerAttendanceCard extends HTMLElement {
     }
   }
 
+  _scheduleDateRefresh() {
+    window.clearTimeout(this._dateRefreshTimer)
+    const now = new Date()
+    const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+    const delay = Math.max(1000, nextDay.getTime() - now.getTime() + 1000)
+    this._dateRefreshTimer = window.setTimeout(() => {
+      if (this._content && this._hass) {
+        this._renderState()
+      }
+      this._scheduleDateRefresh()
+    }, delay)
+  }
+
   _renderState() {
     this.querySelector("#title").textContent = this._config.name || DAT_DEFAULT_TITLE
 
@@ -757,7 +792,7 @@ class DinnerAttendanceCard extends HTMLElement {
     const days = this._days()
     return `
       <div class="week">
-        ${DAT_DAYS.map((day) => this._renderDayRow(day, days[day.key])).join("")}
+        ${this._visibleDays().map((day) => this._renderDayRow(day, days[day.key])).join("")}
       </div>
     `
   }
@@ -768,8 +803,11 @@ class DinnerAttendanceCard extends HTMLElement {
     const selected = this._selectedDay === day.key && this._dialog?.open ? " selected" : ""
 
     return `
-      <button class="day-row${selected}" data-day-row="${day.key}" type="button">
-        <span class="day-label">${day.short}</span>
+      <button class="day-row${selected}" data-day-row="${day.key}" title="${this._escapeAttr(day.title)}" type="button">
+        <span class="day-label">
+          <span class="day-name">${day.short}</span>
+          <span class="day-date">${day.dateLabel}</span>
+        </span>
         <span class="day-lines">
           <span class="line">
             <ha-icon icon="mdi:silverware-fork-knife" title="Abendessen"></ha-icon>
@@ -824,7 +862,8 @@ class DinnerAttendanceCard extends HTMLElement {
       return
     }
 
-    const day = DAT_DAYS.find((item) => item.key === this._selectedDay) || DAT_DAYS[0]
+    const day = this._visibleDays().find((item) => item.key === this._selectedDay) || this._visibleDays()[0]
+    const dayTitle = `${day.name} ${day.dateLabel}`
     const dayState = this._days()[day.key] || { dinner: [], overnight: [] }
     const participants = this._participants()
     const meEntity = this._config.me_entity
@@ -834,10 +873,7 @@ class DinnerAttendanceCard extends HTMLElement {
     this._dialog.innerHTML = `
       <div class="dialog-content">
         <div class="dialog-head">
-          <div class="dialog-title">${day.name}</div>
-          <button class="icon-button close-button" data-close-dialog title="Schließen" aria-label="Schließen" type="button">
-            <ha-icon icon="mdi:close"></ha-icon>
-          </button>
+          <div class="dialog-title">${dayTitle}</div>
         </div>
 
         ${this._renderMeSection(dayState)}
@@ -1292,6 +1328,32 @@ class DinnerAttendanceCard extends HTMLElement {
 
     const date = new Date()
     return DAT_DAYS[(date.getDay() + 6) % 7].key
+  }
+
+  _visibleDays() {
+    const today = new Date()
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const todayIndex = (todayStart.getDay() + 6) % 7
+
+    return Array.from({ length: 7 }, (_item, offset) => {
+      const baseDay = DAT_DAYS[(todayIndex + offset) % 7]
+      const date = new Date(todayStart)
+      date.setDate(todayStart.getDate() + offset)
+      const dateLabel = this._formatDateLabel(date)
+      return {
+        ...baseDay,
+        date,
+        dateLabel,
+        isToday: offset === 0,
+        title: `${baseDay.name} ${dateLabel}`
+      }
+    })
+  }
+
+  _formatDateLabel(date) {
+    const day = String(date.getDate()).padStart(2, "0")
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    return `${day}.${month}`
   }
 
   _isDayKey(dayKey) {
