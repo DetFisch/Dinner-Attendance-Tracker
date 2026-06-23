@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.2.3"
+const DAT_CARD_VERSION = "0.2.4"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -395,12 +395,29 @@ class DinnerAttendanceCard extends HTMLElement {
           flex: 0 0 32px;
         }
 
-        .remove-button ha-icon,
-        .icon-button ha-icon {
+        .close-button ha-icon {
+          display: none;
+        }
+
+        .close-button::before,
+        .close-button::after {
+          content: "";
           position: absolute;
           top: 50%;
           left: 50%;
-          transform: translate(-50%, -50%);
+          width: 15px;
+          height: 2px;
+          border-radius: 999px;
+          background: currentColor;
+          transform-origin: center;
+        }
+
+        .close-button::before {
+          transform: translate(-50%, -50%) rotate(45deg);
+        }
+
+        .close-button::after {
+          transform: translate(-50%, -50%) rotate(-45deg);
         }
 
         .add-grid {
@@ -818,7 +835,7 @@ class DinnerAttendanceCard extends HTMLElement {
       <div class="dialog-content">
         <div class="dialog-head">
           <div class="dialog-title">${day.name}</div>
-          <button class="icon-button" data-close-dialog title="Schließen" aria-label="Schließen" type="button">
+          <button class="icon-button close-button" data-close-dialog title="Schließen" aria-label="Schließen" type="button">
             <ha-icon icon="mdi:close"></ha-icon>
           </button>
         </div>
@@ -981,7 +998,7 @@ class DinnerAttendanceCard extends HTMLElement {
         </div>
         ${options.removable ? `
           <button
-            class="remove-button"
+            class="remove-button close-button"
             data-remove-participant="${escapedId}"
             title="Entfernen"
             aria-label="Entfernen"
