@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.2.0"
+const DAT_CARD_VERSION = "0.2.1"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -13,10 +13,12 @@ const DAT_DAYS = [
 
 class DinnerAttendanceCard extends HTMLElement {
   setConfig(config) {
+    const configuredMe = config.me_entity || config.me || config.person_entity || null
     this._config = {
       name: config.name || DAT_DEFAULT_TITLE,
       entity: config.entity || null,
-      me_entity: config.me_entity || config.me || config.person_entity || null,
+      me_entity: configuredMe || this._storedMeEntity(config.entity || "auto"),
+      me_entity_configured: Boolean(configuredMe),
       default_dinner: this._entityList(config.default_dinner || config.default_dinner_entities),
       default_overnight: this._entityList(config.default_overnight || config.default_overnight_entities),
       defaults: Array.isArray(config.defaults) ? config.defaults : []
@@ -234,6 +236,20 @@ class DinnerAttendanceCard extends HTMLElement {
           text-transform: uppercase;
         }
 
+        .section-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .small-text-button {
+          min-height: 28px;
+          padding: 0 8px;
+          color: var(--secondary-text-color);
+          font-size: 0.78rem;
+        }
+
         .participant-list {
           display: grid;
           gap: 6px;
@@ -277,6 +293,7 @@ class DinnerAttendanceCard extends HTMLElement {
           min-width: 0;
           color: var(--secondary-text-color);
           font-size: 0.75rem;
+          flex-wrap: wrap;
         }
 
         .mini-badge {
@@ -295,6 +312,26 @@ class DinnerAttendanceCard extends HTMLElement {
           display: inline-flex;
           gap: 4px;
           align-items: center;
+        }
+
+        .default-group {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+          padding-top: 2px;
+        }
+
+        .default-toggle {
+          min-height: 24px;
+          padding: 0 7px;
+          font-size: 0.74rem;
+          color: var(--secondary-text-color);
+        }
+
+        .default-toggle[aria-pressed="true"] {
+          border-color: var(--primary-color);
+          color: var(--primary-text-color);
+          background: color-mix(in srgb, var(--primary-color) 18%, transparent);
         }
 
         .toggle {
@@ -344,6 +381,29 @@ class DinnerAttendanceCard extends HTMLElement {
           grid-template-columns: minmax(0, 1fr) auto;
           gap: 8px;
           align-items: end;
+        }
+
+        .add-options {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          align-items: center;
+          grid-column: 1 / -1;
+        }
+
+        .check-option {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          min-height: 28px;
+          color: var(--secondary-text-color);
+          font-size: 0.82rem;
+        }
+
+        .check-option input {
+          width: auto;
+          min-height: auto;
+          margin: 0;
         }
 
         .field {
@@ -497,6 +557,24 @@ class DinnerAttendanceCard extends HTMLElement {
         return
       }
 
+      const setMe = target.closest("[data-set-me]")
+      if (setMe) {
+        this._handleSetMe()
+        return
+      }
+
+      const clearMe = target.closest("[data-clear-me]")
+      if (clearMe) {
+        this._handleClearMe()
+        return
+      }
+
+      const defaultToggle = target.closest("[data-default-action]")
+      if (defaultToggle) {
+        this._handleDefaultToggle(defaultToggle)
+        return
+      }
+
       const addGuest = target.closest("[data-add-guest]")
       if (addGuest) {
         this._handleAddGuest()
@@ -524,6 +602,7 @@ class DinnerAttendanceCard extends HTMLElement {
   _syncEntity() {
     this._multipleCandidates = false
     if (this._config.entity && this._hass?.states?.[this._config.entity]) {
+      this._syncStoredMeEntity()
       return
     }
 
@@ -535,6 +614,17 @@ class DinnerAttendanceCard extends HTMLElement {
       this._config.entity = candidates[0]
     } else if (!this._config.entity && candidates.length > 1) {
       this._multipleCandidates = true
+    }
+    this._syncStoredMeEntity()
+  }
+
+  _syncStoredMeEntity() {
+    if (this._config.me_entity || this._config.me_entity_configured) {
+      return
+    }
+    const stored = this._storedMeEntity(this._config.entity || "auto") || this._storedMeEntity("auto")
+    if (stored) {
+      this._config.me_entity = stored
     }
   }
 
@@ -643,6 +733,16 @@ class DinnerAttendanceCard extends HTMLElement {
               </select>
             </label>
             <button class="text-button" data-add-person type="button" ${personOptions.length ? "" : "disabled"}>Hinzufügen</button>
+            <div class="add-options">
+              <label class="check-option">
+                <input id="person-default-dinner" type="checkbox">
+                Standard Essen
+              </label>
+              <label class="check-option">
+                <input id="person-default-overnight" type="checkbox">
+                Standard Nacht
+              </label>
+            </div>
           </div>
 
           <div class="add-grid">
@@ -665,7 +765,25 @@ class DinnerAttendanceCard extends HTMLElement {
   _renderMeSection(dayState) {
     const meEntity = this._config.me_entity
     if (!meEntity) {
-      return ""
+      const options = this._allPersonOptions()
+      return `
+        <section class="dialog-section">
+          <div class="section-title">Ich</div>
+          <div class="add-grid">
+            <label class="field">
+              <span>Person für dieses Dashboard</span>
+              <select id="me-select">
+                ${options.length
+                  ? '<option value="">Ich wählen...</option>' + options.map((person) => (
+                    `<option value="${this._escapeAttr(person.entityId)}">${this._escapeHtml(person.name)}</option>`
+                  )).join("")
+                  : '<option value="">Keine Home Assistant Personen gefunden</option>'}
+              </select>
+            </label>
+            <button class="text-button" data-set-me type="button" ${options.length ? "" : "disabled"}>Festlegen</button>
+          </div>
+        </section>
+      `
     }
 
     const meParticipant = this._participantById(meEntity) || {
@@ -679,7 +797,10 @@ class DinnerAttendanceCard extends HTMLElement {
 
     return `
       <section class="dialog-section">
-        <div class="section-title">Ich</div>
+        <div class="section-title-row">
+          <div class="section-title">Ich</div>
+          ${this._config.me_entity_configured ? "" : '<button class="small-text-button" data-clear-me type="button">Ändern</button>'}
+        </div>
         <div class="participant-list">
           ${this._renderParticipantRow(meParticipant, dayState, {
             removable: false,
@@ -705,6 +826,7 @@ class DinnerAttendanceCard extends HTMLElement {
         <div class="participant-name-wrap">
           <div class="participant-name" title="${this._escapeAttr(participant.name)}">${escapedName}</div>
           ${meta ? `<div class="participant-meta">${meta}</div>` : ""}
+          ${this._renderDefaultControls(participant)}
         </div>
         <div class="toggle-group">
           <button
@@ -758,6 +880,36 @@ class DinnerAttendanceCard extends HTMLElement {
     return badges.join("")
   }
 
+  _renderDefaultControls(participant) {
+    if (participant.type !== "person") {
+      return ""
+    }
+    const ensureAttr = participant.entity_id
+      ? ` data-person-entity-id="${this._escapeAttr(participant.entity_id)}"`
+      : ""
+
+    return `
+      <div class="default-group">
+        <button
+          class="default-toggle"
+          data-default-action="dinner"
+          data-participant-id="${this._escapeAttr(participant.id)}"
+          ${ensureAttr}
+          aria-pressed="${participant.default_dinner ? "true" : "false"}"
+          type="button"
+        >Immer Essen</button>
+        <button
+          class="default-toggle"
+          data-default-action="overnight"
+          data-participant-id="${this._escapeAttr(participant.id)}"
+          ${ensureAttr}
+          aria-pressed="${participant.default_overnight ? "true" : "false"}"
+          type="button"
+        >Immer Nacht</button>
+      </div>
+    `
+  }
+
   _chips(names, type) {
     if (!names.length) {
       return '<span class="empty">Niemand</span>'
@@ -798,10 +950,80 @@ class DinnerAttendanceCard extends HTMLElement {
     }
 
     await this._callService("add_person", { person_entity_id: personEntityId })
-    await this._applyConfiguredDefault(personEntityId)
+    const defaultDinner = Boolean(this.querySelector("#person-default-dinner")?.checked)
+    const defaultOvernight = Boolean(this.querySelector("#person-default-overnight")?.checked)
+    if (defaultDinner || defaultOvernight) {
+      await this._callService("set_person_defaults", {
+        participant_id: personEntityId,
+        default_dinner: defaultDinner,
+        default_overnight: defaultOvernight
+      })
+    } else {
+      await this._applyConfiguredDefault(personEntityId)
+    }
     if (select) {
       select.value = ""
     }
+    const dinnerCheckbox = this.querySelector("#person-default-dinner")
+    const overnightCheckbox = this.querySelector("#person-default-overnight")
+    if (dinnerCheckbox) {
+      dinnerCheckbox.checked = false
+    }
+    if (overnightCheckbox) {
+      overnightCheckbox.checked = false
+    }
+  }
+
+  async _handleSetMe() {
+    const select = this.querySelector("#me-select")
+    const personEntityId = String(select?.value || "").trim()
+    if (!personEntityId) {
+      this._setStatus("Bitte eine Person für Ich auswählen.", true)
+      return
+    }
+
+    this._config.me_entity = personEntityId
+    this._storeMeEntity(personEntityId)
+    if (!this._participantById(personEntityId)) {
+      await this._callService("add_person", { person_entity_id: personEntityId })
+    }
+    await this._applyConfiguredDefault(personEntityId)
+    this._renderState()
+  }
+
+  _handleClearMe() {
+    if (this._config.me_entity_configured) {
+      return
+    }
+    this._config.me_entity = null
+    this._clearStoredMeEntity()
+    this._renderState()
+  }
+
+  async _handleDefaultToggle(toggle) {
+    const participantId = toggle.getAttribute("data-participant-id")
+    const action = toggle.getAttribute("data-default-action")
+    const personEntityId = toggle.getAttribute("data-person-entity-id")
+    let participant = this._participantById(participantId)
+    if (!participant && personEntityId) {
+      await this._callService("add_person", { person_entity_id: personEntityId })
+      participant = {
+        id: personEntityId,
+        type: "person",
+        default_dinner: false,
+        default_overnight: false
+      }
+    }
+    if (!participant || participant.type !== "person" || !action) {
+      return
+    }
+
+    const nextValue = toggle.getAttribute("aria-pressed") !== "true"
+    await this._callService("set_person_defaults", {
+      participant_id: participantId,
+      default_dinner: action === "dinner" ? nextValue : Boolean(participant.default_dinner),
+      default_overnight: action === "overnight" ? nextValue : Boolean(participant.default_overnight)
+    })
   }
 
   async _handleAddGuest() {
@@ -960,6 +1182,16 @@ class DinnerAttendanceCard extends HTMLElement {
       .sort((left, right) => left.name.localeCompare(right.name))
   }
 
+  _allPersonOptions() {
+    return Object.entries(this._hass?.states || {})
+      .filter(([entityId]) => entityId.startsWith("person."))
+      .map(([entityId, state]) => ({
+        entityId,
+        name: state?.attributes?.friendly_name || entityId.replace(/^person\./, "").replace(/_/g, " ")
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name))
+  }
+
   _configuredDefaults() {
     const defaults = new Map()
     for (const entityId of this._config.default_dinner) {
@@ -1002,6 +1234,47 @@ class DinnerAttendanceCard extends HTMLElement {
   _friendlyPersonName(entityId) {
     const state = this._hass?.states?.[entityId]
     return state?.attributes?.friendly_name || entityId.replace(/^person\./, "").replace(/_/g, " ")
+  }
+
+  _storageKey(suffix) {
+    const entity = this._config?.entity || "auto"
+    const path = window.location?.pathname || "dashboard"
+    return `${DAT_DOMAIN}:${entity}:${path}:${suffix}`
+  }
+
+  _storedMeEntity(entity) {
+    try {
+      const path = window.location?.pathname || "dashboard"
+      return window.localStorage?.getItem(`${DAT_DOMAIN}:${entity}:${path}:me`) || null
+    } catch (_error) {
+      return null
+    }
+  }
+
+  _storeMeEntity(entityId) {
+    if (this._config.me_entity_configured) {
+      return
+    }
+    try {
+      window.localStorage?.setItem(this._storageKey("me"), entityId)
+    } catch (_error) {
+      // localStorage may be unavailable in restricted browser contexts.
+    }
+  }
+
+  _clearStoredMeEntity() {
+    if (this._config.me_entity_configured) {
+      return
+    }
+    try {
+      const path = window.location?.pathname || "dashboard"
+      const entities = new Set([this._config?.entity || "auto", "auto"])
+      for (const entity of entities) {
+        window.localStorage?.removeItem(`${DAT_DOMAIN}:${entity}:${path}:me`)
+      }
+    } catch (_error) {
+      // localStorage may be unavailable in restricted browser contexts.
+    }
   }
 
   _missingMessage() {
