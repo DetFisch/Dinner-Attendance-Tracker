@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.2.2"
+const DAT_CARD_VERSION = "0.2.3"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -345,13 +345,13 @@ class DinnerAttendanceCard extends HTMLElement {
         }
 
         .toggle {
-          min-width: 78px;
+          min-width: 86px;
           height: 32px;
           padding: 0 10px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 6px;
+          gap: 10px;
           color: var(--secondary-text-color);
           line-height: 1;
           white-space: nowrap;
@@ -382,6 +382,7 @@ class DinnerAttendanceCard extends HTMLElement {
 
         .remove-button,
         .icon-button {
+          position: relative;
           width: 32px;
           min-width: 32px;
           height: 32px;
@@ -392,6 +393,14 @@ class DinnerAttendanceCard extends HTMLElement {
           color: var(--secondary-text-color);
           line-height: 0;
           flex: 0 0 32px;
+        }
+
+        .remove-button ha-icon,
+        .icon-button ha-icon {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
         }
 
         .add-grid {
@@ -862,11 +871,11 @@ class DinnerAttendanceCard extends HTMLElement {
               <div class="add-options">
                 <label class="check-option">
                   <input data-person-default-dinner type="checkbox">
-                  Standard Essen
+                  Immer Essen
                 </label>
                 <label class="check-option">
                   <input data-person-default-overnight type="checkbox">
-                  Standard Nacht
+                  Immer Nacht
                 </label>
               </div>
             </div>
@@ -986,14 +995,7 @@ class DinnerAttendanceCard extends HTMLElement {
   }
 
   _participantMeta(participant) {
-    const badges = []
-    if (participant.default_dinner) {
-      badges.push('<span class="mini-badge">Standard Essen</span>')
-    }
-    if (participant.default_overnight) {
-      badges.push('<span class="mini-badge">Standard Nacht</span>')
-    }
-    return badges.join("")
+    return ""
   }
 
   _renderDefaultControls(participant) {

@@ -14,7 +14,7 @@ Home Assistant Custom Integration mit gebündelter Lovelace-Card für einen einf
 2. Home Assistant neu starten.
 3. Integration hinzufügen: `Einstellungen` > `Geräte & Dienste` > `Integration hinzufügen` > `Dinner Attendance Tracker`. Es wird automatisch ein Tracker `dinner_attendance` angelegt.
 4. Lovelace Resource hinzufügen:
-   - URL: `/dinner_attendance_tracker/dinner-attendance-card.js?v=0.2.2`
+   - URL: `/dinner_attendance_tracker/dinner-attendance-card.js?v=0.2.3`
    - Typ: `module`
 5. Browser Hard-Reload (`Ctrl+F5`).
 
@@ -62,7 +62,7 @@ Wenn `Ich` nicht in YAML gesetzt ist, kannst du im Popup einmal eine Home Assist
 
 Standardpersonen kannst du ebenfalls im Popup setzen:
 
-- beim Hinzufügen einer Home Assistant Person die Checkboxen `Standard Essen` und `Standard Nacht` aktivieren
+- beim Hinzufügen einer Home Assistant Person die Checkboxen `Immer Essen` und `Immer Nacht` aktivieren
 - bei bereits vorhandenen Personen die Buttons `Immer Essen` und `Immer Nacht` verwenden
 
 Standardpersonen sind jede Woche automatisch eingetragen. Im Popup trägst du sie nur an Ausnahmetagen aus.
