@@ -30,8 +30,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(tracker_id)
             self._abort_if_unique_id_configured()
 
-            title = str(user_input.get(CONF_NAME, DEFAULT_TRACKER_NAME)).strip()
-            return self.async_create_entry(title=title or DEFAULT_TRACKER_NAME, data=user_input)
+            title = str(user_input.get(CONF_NAME, tracker_id)).strip() or tracker_id
+            return self.async_create_entry(title=title, data=user_input)
 
         return self.async_show_form(
             step_id="user",

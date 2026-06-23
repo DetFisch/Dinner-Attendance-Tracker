@@ -2,18 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 import inspect
+import logging
 from pathlib import Path
 from typing import Any
-
-import voluptuous as vol
-
-from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_ID,
@@ -44,77 +36,13 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS = ["sensor"]
 CARD_FILENAME = "dinner-attendance-card.js"
 CARD_URL_PATH = f"/{DOMAIN}/{CARD_FILENAME}"
 CARD_FILE_PATH = Path(__file__).parent / CARD_FILENAME
 
-TRACKER_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_ID, default=DEFAULT_TRACKER_ID): cv.slug,
-        vol.Required(CONF_NAME, default=DEFAULT_TRACKER_NAME): cv.string,
-    }
-)
 
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            {
-                vol.Optional(CONF_TRACKERS): vol.All(
-                    cv.ensure_list,
-                    [TRACKER_SCHEMA],
-                ),
-                vol.Optional(CONF_ID, default=DEFAULT_TRACKER_ID): cv.slug,
-                vol.Optional(CONF_NAME, default=DEFAULT_TRACKER_NAME): cv.string,
-            }
-        )
-    },
-    extra=vol.ALLOW_EXTRA,
-)
-
-SERVICE_SCHEMA_ADD_PERSON = vol.Schema(
-    {
-        vol.Optional(FIELD_ENTITY_ID): cv.entity_id,
-        vol.Required(FIELD_PERSON_ENTITY_ID): cv.entity_id,
-        vol.Optional(FIELD_NAME): cv.string,
-    }
-)
-
-SERVICE_SCHEMA_ADD_GUEST = vol.Schema(
-    {
-        vol.Optional(FIELD_ENTITY_ID): cv.entity_id,
-        vol.Required(FIELD_NAME): cv.string,
-    }
-)
-
-SERVICE_SCHEMA_REMOVE_PARTICIPANT = vol.Schema(
-    {
-        vol.Optional(FIELD_ENTITY_ID): cv.entity_id,
-        vol.Required(FIELD_PARTICIPANT_ID): cv.string,
-    }
-)
-
-SERVICE_SCHEMA_SET_ATTENDANCE = vol.Schema(
-    {
-        vol.Optional(FIELD_ENTITY_ID): cv.entity_id,
-        vol.Required(FIELD_DAY): vol.In(DAY_KEYS),
-        vol.Required(FIELD_PARTICIPANT_ID): cv.string,
-        vol.Optional(FIELD_DINNER): cv.boolean,
-        vol.Optional(FIELD_OVERNIGHT): cv.boolean,
-    }
-)
-
-SERVICE_SCHEMA_CLEAR_DAY = vol.Schema(
-    {
-        vol.Optional(FIELD_ENTITY_ID): cv.entity_id,
-        vol.Required(FIELD_DAY): vol.In(DAY_KEYS),
-    }
-)
-
-SERVICE_SCHEMA_RESET_WEEK = vol.Schema({vol.Optional(FIELD_ENTITY_ID): cv.entity_id})
-
-
-def _ensure_domain_data(hass: HomeAssistant) -> dict[str, Any]:
+def _ensure_domain_data(hass: Any) -> dict[str, Any]:
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {
             DATA_ENTRIES: {},
@@ -124,8 +52,10 @@ def _ensure_domain_data(hass: HomeAssistant) -> dict[str, Any]:
     return hass.data[DOMAIN]
 
 
-async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+async def async_setup(hass: Any, config: dict[str, Any]) -> bool:
     """Set up Dinner Attendance Tracker from YAML and register card resource."""
+    from homeassistant.config_entries import SOURCE_IMPORT
+
     _ensure_domain_data(hass)
     await _ensure_card_registered(hass)
 
@@ -141,10 +71,17 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 CONF_NAME: conf.get(CONF_NAME, DEFAULT_TRACKER_NAME),
             }
         ]
+    elif not isinstance(trackers, list):
+        trackers = [trackers]
 
     seen_ids: set[str] = set()
     for tracker in trackers:
-        tracker_id = str(tracker[CONF_ID])
+        if not isinstance(tracker, dict):
+            _LOGGER.error("Invalid tracker config for %s: %s", DOMAIN, tracker)
+            return False
+
+        tracker_id = str(tracker.get(CONF_ID, DEFAULT_TRACKER_ID)).strip()
+        tracker_name = str(tracker.get(CONF_NAME, tracker_id)).strip() or tracker_id
         if tracker_id in seen_ids:
             _LOGGER.error("Duplicate tracker id in %s config: %s", DOMAIN, tracker_id)
             return False
@@ -156,7 +93,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 context={"source": SOURCE_IMPORT},
                 data={
                     CONF_ID: tracker_id,
-                    CONF_NAME: str(tracker.get(CONF_NAME, tracker_id)),
+                    CONF_NAME: tracker_name,
                 },
             )
         )
@@ -164,7 +101,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: Any, entry: Any) -> bool:
     """Set up Dinner Attendance Tracker from a config entry."""
     from .manager import DinnerAttendanceManager
 
@@ -192,7 +129,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: Any, entry: Any) -> bool:
     """Unload Dinner Attendance Tracker config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if not unload_ok:
@@ -217,7 +154,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _ensure_card_registered(hass: HomeAssistant) -> None:
+async def _ensure_card_registered(hass: Any) -> None:
     """Expose the bundled Lovelace card from inside the integration directory."""
     domain_data = _ensure_domain_data(hass)
     if domain_data[DATA_CARD_REGISTERED]:
@@ -241,7 +178,9 @@ async def _ensure_card_registered(hass: HomeAssistant) -> None:
     domain_data[DATA_CARD_REGISTERED] = True
 
 
-def _resolve_manager(hass: HomeAssistant, call_data: dict[str, Any]) -> Any:
+def _resolve_manager(hass: Any, call_data: dict[str, Any]) -> Any:
+    from homeassistant.exceptions import HomeAssistantError
+
     domain_data = _ensure_domain_data(hass)
     entries = domain_data[DATA_ENTRIES]
 
@@ -262,23 +201,61 @@ def _resolve_manager(hass: HomeAssistant, call_data: dict[str, Any]) -> Any:
     raise HomeAssistantError("Provide entity_id when more than one tracker exists")
 
 
-def _register_services(hass: HomeAssistant) -> None:
-    async def handle_add_person(call: ServiceCall) -> None:
+def _register_services(hass: Any) -> None:
+    import voluptuous as vol
+
+    service_schema_add_person = vol.Schema(
+        {
+            vol.Optional(FIELD_ENTITY_ID): str,
+            vol.Required(FIELD_PERSON_ENTITY_ID): str,
+            vol.Optional(FIELD_NAME): str,
+        }
+    )
+    service_schema_add_guest = vol.Schema(
+        {
+            vol.Optional(FIELD_ENTITY_ID): str,
+            vol.Required(FIELD_NAME): str,
+        }
+    )
+    service_schema_remove_participant = vol.Schema(
+        {
+            vol.Optional(FIELD_ENTITY_ID): str,
+            vol.Required(FIELD_PARTICIPANT_ID): str,
+        }
+    )
+    service_schema_set_attendance = vol.Schema(
+        {
+            vol.Optional(FIELD_ENTITY_ID): str,
+            vol.Required(FIELD_DAY): vol.In(DAY_KEYS),
+            vol.Required(FIELD_PARTICIPANT_ID): str,
+            vol.Optional(FIELD_DINNER): vol.Coerce(bool),
+            vol.Optional(FIELD_OVERNIGHT): vol.Coerce(bool),
+        }
+    )
+    service_schema_clear_day = vol.Schema(
+        {
+            vol.Optional(FIELD_ENTITY_ID): str,
+            vol.Required(FIELD_DAY): vol.In(DAY_KEYS),
+        }
+    )
+    service_schema_reset_week = vol.Schema({vol.Optional(FIELD_ENTITY_ID): str})
+
+    async def handle_add_person(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
         await manager.async_add_person(
             str(call.data[FIELD_PERSON_ENTITY_ID]),
             name=call.data.get(FIELD_NAME),
         )
 
-    async def handle_add_guest(call: ServiceCall) -> None:
+    async def handle_add_guest(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
         await manager.async_add_guest(str(call.data[FIELD_NAME]))
 
-    async def handle_remove_participant(call: ServiceCall) -> None:
+    async def handle_remove_participant(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
         await manager.async_remove_participant(str(call.data[FIELD_PARTICIPANT_ID]))
 
-    async def handle_set_attendance(call: ServiceCall) -> None:
+    async def handle_set_attendance(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
         await manager.async_set_attendance(
             str(call.data[FIELD_DAY]),
@@ -287,11 +264,11 @@ def _register_services(hass: HomeAssistant) -> None:
             overnight=call.data.get(FIELD_OVERNIGHT),
         )
 
-    async def handle_clear_day(call: ServiceCall) -> None:
+    async def handle_clear_day(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
         await manager.async_clear_day(str(call.data[FIELD_DAY]))
 
-    async def handle_reset_week(call: ServiceCall) -> None:
+    async def handle_reset_week(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
         await manager.async_reset_week()
 
@@ -299,35 +276,35 @@ def _register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_ADD_PERSON,
         handle_add_person,
-        schema=SERVICE_SCHEMA_ADD_PERSON,
+        schema=service_schema_add_person,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_ADD_GUEST,
         handle_add_guest,
-        schema=SERVICE_SCHEMA_ADD_GUEST,
+        schema=service_schema_add_guest,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_REMOVE_PARTICIPANT,
         handle_remove_participant,
-        schema=SERVICE_SCHEMA_REMOVE_PARTICIPANT,
+        schema=service_schema_remove_participant,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_SET_ATTENDANCE,
         handle_set_attendance,
-        schema=SERVICE_SCHEMA_SET_ATTENDANCE,
+        schema=service_schema_set_attendance,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_CLEAR_DAY,
         handle_clear_day,
-        schema=SERVICE_SCHEMA_CLEAR_DAY,
+        schema=service_schema_clear_day,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RESET_WEEK,
         handle_reset_week,
-        schema=SERVICE_SCHEMA_RESET_WEEK,
+        schema=service_schema_reset_week,
     )

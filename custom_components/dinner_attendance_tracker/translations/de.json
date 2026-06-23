@@ -11,6 +11,9 @@
         }
       }
     },
+    "error": {
+      "already_configured": "Dieser Tracker existiert bereits."
+    },
     "abort": {
       "already_configured": "Dieser Tracker ist bereits eingerichtet."
     }
