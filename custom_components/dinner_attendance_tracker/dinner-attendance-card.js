@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.2.1"
+const DAT_CARD_VERSION = "0.2.2"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -257,13 +257,13 @@ class DinnerAttendanceCard extends HTMLElement {
 
         .participant-row {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) auto auto;
-          gap: 8px;
+          grid-template-columns: minmax(0, 1fr) max-content 32px;
+          gap: 10px;
           align-items: center;
-          min-height: 42px;
+          min-height: 52px;
           border: 1px solid var(--divider-color);
           border-radius: var(--ha-card-border-radius, 8px);
-          padding: 6px;
+          padding: 8px;
         }
 
         .participant-row.me {
@@ -271,11 +271,18 @@ class DinnerAttendanceCard extends HTMLElement {
           background: color-mix(in srgb, var(--primary-color) 8%, transparent);
         }
 
+        .participant-main {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 8px;
+          align-items: center;
+          min-width: 0;
+        }
+
         .participant-name-wrap {
           display: grid;
           gap: 2px;
           min-width: 0;
-          padding-left: 4px;
         }
 
         .participant-name {
@@ -312,20 +319,23 @@ class DinnerAttendanceCard extends HTMLElement {
           display: inline-flex;
           gap: 4px;
           align-items: center;
+          justify-content: flex-end;
         }
 
         .default-group {
           display: flex;
           gap: 4px;
-          flex-wrap: wrap;
-          padding-top: 2px;
+          flex-wrap: nowrap;
+          justify-content: flex-end;
         }
 
         .default-toggle {
-          min-height: 24px;
-          padding: 0 7px;
+          min-height: 28px;
+          padding: 0 8px;
           font-size: 0.74rem;
           color: var(--secondary-text-color);
+          line-height: 1;
+          white-space: nowrap;
         }
 
         .default-toggle[aria-pressed="true"] {
@@ -335,20 +345,25 @@ class DinnerAttendanceCard extends HTMLElement {
         }
 
         .toggle {
-          min-width: 42px;
-          height: 30px;
-          padding: 0 8px;
+          min-width: 78px;
+          height: 32px;
+          padding: 0 10px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 5px;
+          gap: 6px;
           color: var(--secondary-text-color);
+          line-height: 1;
+          white-space: nowrap;
         }
 
         .toggle ha-icon,
-        .remove-button ha-icon {
+        .remove-button ha-icon,
+        .icon-button ha-icon {
           width: 17px;
           height: 17px;
+          flex: 0 0 17px;
+          display: block;
         }
 
         .toggle[aria-pressed="true"][data-attendance-action="dinner"] {
@@ -368,12 +383,15 @@ class DinnerAttendanceCard extends HTMLElement {
         .remove-button,
         .icon-button {
           width: 32px;
+          min-width: 32px;
           height: 32px;
           padding: 0;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           color: var(--secondary-text-color);
+          line-height: 0;
+          flex: 0 0 32px;
         }
 
         .add-grid {
@@ -381,6 +399,33 @@ class DinnerAttendanceCard extends HTMLElement {
           grid-template-columns: minmax(0, 1fr) auto;
           gap: 8px;
           align-items: end;
+        }
+
+        .person-add-list {
+          display: grid;
+          gap: 6px;
+        }
+
+        .person-add-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 8px;
+          align-items: center;
+          border: 1px solid var(--divider-color);
+          border-radius: var(--ha-card-border-radius, 8px);
+          padding: 8px;
+        }
+
+        .person-add-name {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--primary-text-color);
+        }
+
+        .person-add-row .text-button {
+          min-height: 32px;
         }
 
         .add-options {
@@ -444,6 +489,11 @@ class DinnerAttendanceCard extends HTMLElement {
           white-space: nowrap;
         }
 
+        .row-spacer {
+          width: 32px;
+          height: 32px;
+        }
+
         .danger {
           color: var(--error-color);
         }
@@ -466,7 +516,19 @@ class DinnerAttendanceCard extends HTMLElement {
 
         @media (max-width: 520px) {
           .participant-row {
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: minmax(0, 1fr) 32px;
+            align-items: start;
+          }
+
+          .participant-main {
+            grid-column: 1;
+            grid-row: 1;
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          .default-group {
+            justify-content: flex-start;
+            flex-wrap: wrap;
           }
 
           .toggle-group {
@@ -483,6 +545,15 @@ class DinnerAttendanceCard extends HTMLElement {
           .remove-button {
             grid-column: 2;
             grid-row: 1;
+            justify-self: end;
+          }
+
+          .row-spacer {
+            display: none;
+          }
+
+          .person-add-row {
+            grid-template-columns: minmax(0, 1fr);
           }
 
           .add-grid {
@@ -511,6 +582,12 @@ class DinnerAttendanceCard extends HTMLElement {
     this._content = this.querySelector("#content")
     this._status = this.querySelector("#status")
     this._dialog = this.querySelector("#day-dialog")
+    const dialogClosed = () => this._handleDialogClosed()
+    this._dialog.addEventListener("closed", dialogClosed)
+    this._dialog.addEventListener("close", dialogClosed)
+    this._dialog.addEventListener("cancel", dialogClosed)
+    this._dialog.addEventListener("MDCDialog:closed", dialogClosed)
+    this._dialog.addEventListener("iron-overlay-closed", dialogClosed)
   }
 
   _attachEvents() {
@@ -553,7 +630,7 @@ class DinnerAttendanceCard extends HTMLElement {
 
       const addPerson = target.closest("[data-add-person]")
       if (addPerson) {
-        this._handleAddPerson()
+        this._handleAddPerson(addPerson)
         return
       }
 
@@ -583,7 +660,7 @@ class DinnerAttendanceCard extends HTMLElement {
 
       const closeDialog = target.closest("[data-close-dialog]")
       if (closeDialog) {
-        this._dialog.open = false
+        this._closeDialog()
       }
     })
 
@@ -682,8 +759,37 @@ class DinnerAttendanceCard extends HTMLElement {
   }
 
   _openDialog() {
+    this._openingDialog = true
+    this._dialog.open = false
     this._renderDialog()
-    this._dialog.open = true
+    window.requestAnimationFrame(() => {
+      if (!this._dialog) {
+        this._openingDialog = false
+        return
+      }
+      this._dialog.open = true
+      this._openingDialog = false
+      this._renderState()
+    })
+  }
+
+  _closeDialog() {
+    if (!this._dialog) {
+      return
+    }
+    this._dialog.open = false
+    this._renderState()
+  }
+
+  _handleDialogClosed() {
+    if (this._openingDialog) {
+      return
+    }
+    if (!this._dialog?.open) {
+      this._renderState()
+      return
+    }
+    this._dialog.open = false
     this._renderState()
   }
 
@@ -721,29 +827,7 @@ class DinnerAttendanceCard extends HTMLElement {
 
         <section class="dialog-section">
           <div class="section-title">Hinzufügen</div>
-          <div class="add-grid">
-            <label class="field">
-              <span>Home Assistant Person</span>
-              <select id="person-select">
-                ${personOptions.length
-                  ? '<option value="">Person wählen...</option>' + personOptions.map((person) => (
-                    `<option value="${this._escapeAttr(person.entityId)}">${this._escapeHtml(person.name)}</option>`
-                  )).join("")
-                  : '<option value="">Keine weiteren Personen</option>'}
-              </select>
-            </label>
-            <button class="text-button" data-add-person type="button" ${personOptions.length ? "" : "disabled"}>Hinzufügen</button>
-            <div class="add-options">
-              <label class="check-option">
-                <input id="person-default-dinner" type="checkbox">
-                Standard Essen
-              </label>
-              <label class="check-option">
-                <input id="person-default-overnight" type="checkbox">
-                Standard Nacht
-              </label>
-            </div>
-          </div>
+          ${this._renderPersonAddList(personOptions)}
 
           <div class="add-grid">
             <label class="field">
@@ -758,6 +842,36 @@ class DinnerAttendanceCard extends HTMLElement {
           <button class="text-button" data-clear-day type="button">Tag auf Standard</button>
           <button class="text-button danger" data-reset-week type="button">Woche auf Standard</button>
         </div>
+      </div>
+    `
+  }
+
+  _renderPersonAddList(personOptions) {
+    if (!personOptions.length) {
+      return '<div class="message">Alle Home Assistant Personen sind bereits hinzugefügt.</div>'
+    }
+
+    return `
+      <div class="person-add-list">
+        ${personOptions.map((person) => {
+          const entityId = this._escapeAttr(person.entityId)
+          return `
+            <div class="person-add-row" data-add-person-row="${entityId}">
+              <div class="person-add-name" title="${this._escapeAttr(person.name)}">${this._escapeHtml(person.name)}</div>
+              <button class="text-button" data-add-person="${entityId}" type="button">Hinzufügen</button>
+              <div class="add-options">
+                <label class="check-option">
+                  <input data-person-default-dinner type="checkbox">
+                  Standard Essen
+                </label>
+                <label class="check-option">
+                  <input data-person-default-overnight type="checkbox">
+                  Standard Nacht
+                </label>
+              </div>
+            </div>
+          `
+        }).join("")}
       </div>
     `
   }
@@ -823,9 +937,11 @@ class DinnerAttendanceCard extends HTMLElement {
 
     return `
       <div class="participant-row${options.me ? " me" : ""}">
-        <div class="participant-name-wrap">
-          <div class="participant-name" title="${this._escapeAttr(participant.name)}">${escapedName}</div>
-          ${meta ? `<div class="participant-meta">${meta}</div>` : ""}
+        <div class="participant-main">
+          <div class="participant-name-wrap">
+            <div class="participant-name" title="${this._escapeAttr(participant.name)}">${escapedName}</div>
+            ${meta ? `<div class="participant-meta">${meta}</div>` : ""}
+          </div>
           ${this._renderDefaultControls(participant)}
         </div>
         <div class="toggle-group">
@@ -864,7 +980,7 @@ class DinnerAttendanceCard extends HTMLElement {
           >
             <ha-icon icon="mdi:close"></ha-icon>
           </button>
-        ` : '<span></span>'}
+        ` : '<span class="row-spacer"></span>'}
       </div>
     `
   }
@@ -941,17 +1057,18 @@ class DinnerAttendanceCard extends HTMLElement {
     })
   }
 
-  async _handleAddPerson() {
+  async _handleAddPerson(button) {
+    const row = button?.closest("[data-add-person-row]")
     const select = this.querySelector("#person-select")
-    const personEntityId = String(select?.value || "").trim()
+    const personEntityId = String(button?.getAttribute("data-add-person") || select?.value || "").trim()
     if (!personEntityId) {
       this._setStatus("Bitte eine Person auswählen.", true)
       return
     }
 
     await this._callService("add_person", { person_entity_id: personEntityId })
-    const defaultDinner = Boolean(this.querySelector("#person-default-dinner")?.checked)
-    const defaultOvernight = Boolean(this.querySelector("#person-default-overnight")?.checked)
+    const defaultDinner = Boolean(row?.querySelector("[data-person-default-dinner]")?.checked || this.querySelector("#person-default-dinner")?.checked)
+    const defaultOvernight = Boolean(row?.querySelector("[data-person-default-overnight]")?.checked || this.querySelector("#person-default-overnight")?.checked)
     if (defaultDinner || defaultOvernight) {
       await this._callService("set_person_defaults", {
         participant_id: personEntityId,
@@ -964,8 +1081,8 @@ class DinnerAttendanceCard extends HTMLElement {
     if (select) {
       select.value = ""
     }
-    const dinnerCheckbox = this.querySelector("#person-default-dinner")
-    const overnightCheckbox = this.querySelector("#person-default-overnight")
+    const dinnerCheckbox = row?.querySelector("[data-person-default-dinner]") || this.querySelector("#person-default-dinner")
+    const overnightCheckbox = row?.querySelector("[data-person-default-overnight]") || this.querySelector("#person-default-overnight")
     if (dinnerCheckbox) {
       dinnerCheckbox.checked = false
     }
