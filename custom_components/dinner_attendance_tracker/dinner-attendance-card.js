@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.1.4"
+const DAT_CARD_VERSION = "0.2.0"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -15,14 +15,17 @@ class DinnerAttendanceCard extends HTMLElement {
   setConfig(config) {
     this._config = {
       name: config.name || DAT_DEFAULT_TITLE,
-      entity: config.entity || null
+      entity: config.entity || null,
+      me_entity: config.me_entity || config.me || config.person_entity || null,
+      default_dinner: this._entityList(config.default_dinner || config.default_dinner_entities),
+      default_overnight: this._entityList(config.default_overnight || config.default_overnight_entities),
+      defaults: Array.isArray(config.defaults) ? config.defaults : []
     }
     this._selectedDay = this._isDayKey(config.default_day)
       ? config.default_day
       : this._isDayKey(this._selectedDay)
         ? this._selectedDay
         : null
-    this._editorOpen = Boolean(config.editor_open)
   }
 
   set hass(hass) {
@@ -35,6 +38,7 @@ class DinnerAttendanceCard extends HTMLElement {
 
     this._syncEntity()
     this._renderState()
+    this._syncConfiguredPeople()
   }
 
   getCardSize() {
@@ -74,13 +78,6 @@ class DinnerAttendanceCard extends HTMLElement {
           white-space: nowrap;
         }
 
-        .header-actions {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          flex: 0 0 auto;
-        }
-
         button {
           box-sizing: border-box;
           border: 1px solid var(--divider-color);
@@ -98,15 +95,6 @@ class DinnerAttendanceCard extends HTMLElement {
         button[disabled] {
           opacity: 0.45;
           cursor: default;
-        }
-
-        .icon-button {
-          width: 36px;
-          height: 36px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0;
         }
 
         .week {
@@ -208,28 +196,42 @@ class DinnerAttendanceCard extends HTMLElement {
           font-size: 0.82rem;
         }
 
-        .editor {
+        ha-dialog {
+          --dialog-content-padding: 0 24px 20px;
+          --mdc-dialog-min-width: min(520px, calc(100vw - 32px));
+          --mdc-dialog-max-width: min(560px, calc(100vw - 32px));
+        }
+
+        .dialog-content {
           display: grid;
-          gap: 12px;
-          border-top: 1px solid var(--divider-color);
-          padding-top: 12px;
+          gap: 14px;
+          padding-top: 8px;
         }
 
-        .editor[hidden] {
-          display: none;
-        }
-
-        .editor-head {
+        .dialog-head {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 12px;
         }
 
-        .editor-title {
-          color: var(--primary-text-color);
-          font-size: 0.95rem;
+        .dialog-title {
+          min-width: 0;
+          font-size: 1.05rem;
           font-weight: 600;
+          color: var(--primary-text-color);
+        }
+
+        .dialog-section {
+          display: grid;
+          gap: 8px;
+        }
+
+        .section-title {
+          color: var(--secondary-text-color);
+          font-size: 0.78rem;
+          font-weight: 600;
+          text-transform: uppercase;
         }
 
         .participant-list {
@@ -248,13 +250,45 @@ class DinnerAttendanceCard extends HTMLElement {
           padding: 6px;
         }
 
-        .participant-name {
+        .participant-row.me {
+          border-color: var(--primary-color);
+          background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+        }
+
+        .participant-name-wrap {
+          display: grid;
+          gap: 2px;
           min-width: 0;
           padding-left: 4px;
+        }
+
+        .participant-name {
+          min-width: 0;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
           color: var(--primary-text-color);
+        }
+
+        .participant-meta {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          min-width: 0;
+          color: var(--secondary-text-color);
+          font-size: 0.75rem;
+        }
+
+        .mini-badge {
+          display: inline-flex;
+          align-items: center;
+          max-width: 100%;
+          padding: 1px 6px;
+          border-radius: var(--ha-border-radius-pill, 999px);
+          background: var(--secondary-background-color);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .toggle-group {
@@ -274,7 +308,8 @@ class DinnerAttendanceCard extends HTMLElement {
           color: var(--secondary-text-color);
         }
 
-        .toggle ha-icon {
+        .toggle ha-icon,
+        .remove-button ha-icon {
           width: 17px;
           height: 17px;
         }
@@ -293,19 +328,15 @@ class DinnerAttendanceCard extends HTMLElement {
           color: var(--primary-text-color);
         }
 
-        .remove-button {
-          width: 30px;
-          height: 30px;
+        .remove-button,
+        .icon-button {
+          width: 32px;
+          height: 32px;
           padding: 0;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           color: var(--secondary-text-color);
-        }
-
-        .remove-button ha-icon {
-          width: 17px;
-          height: 17px;
         }
 
         .add-grid {
@@ -408,23 +439,18 @@ class DinnerAttendanceCard extends HTMLElement {
         <div class="card-content card-wrap">
           <div class="header">
             <div id="title" class="title"></div>
-            <div class="header-actions">
-              <button id="toggle-editor" class="icon-button" title="Bearbeiten" aria-label="Bearbeiten">
-                <ha-icon icon="mdi:pencil"></ha-icon>
-              </button>
-            </div>
           </div>
           <div id="content"></div>
-          <div id="editor" class="editor" hidden></div>
           <div id="status" class="status"></div>
         </div>
       </ha-card>
+      <ha-dialog id="day-dialog"></ha-dialog>
     `
 
     this._root = this.querySelector("ha-card")
     this._content = this.querySelector("#content")
-    this._editor = this.querySelector("#editor")
     this._status = this.querySelector("#status")
+    this._dialog = this.querySelector("#day-dialog")
   }
 
   _attachEvents() {
@@ -434,21 +460,10 @@ class DinnerAttendanceCard extends HTMLElement {
         return
       }
 
-      const toggleEditor = target.closest("#toggle-editor")
-      if (toggleEditor) {
-        this._editorOpen = !this._editorOpen
-        if (!this._selectedDay) {
-          this._selectedDay = this._todayKey()
-        }
-        this._renderState()
-        return
-      }
-
       const dayRow = target.closest("[data-day-row]")
       if (dayRow) {
         this._selectedDay = dayRow.getAttribute("data-day-row")
-        this._editorOpen = true
-        this._renderState()
+        this._openDialog()
         return
       }
 
@@ -485,6 +500,12 @@ class DinnerAttendanceCard extends HTMLElement {
       const addGuest = target.closest("[data-add-guest]")
       if (addGuest) {
         this._handleAddGuest()
+        return
+      }
+
+      const closeDialog = target.closest("[data-close-dialog]")
+      if (closeDialog) {
+        this._dialog.open = false
       }
     })
 
@@ -523,17 +544,20 @@ class DinnerAttendanceCard extends HTMLElement {
     const state = this._trackerState()
     if (!state) {
       this._content.innerHTML = this._missingMessage()
-      this._editor.hidden = true
+      if (this._dialog) {
+        this._dialog.open = false
+      }
       return
     }
 
-    const participants = this._participants()
     if (!this._selectedDay) {
       this._selectedDay = this._todayKey()
     }
 
     this._content.innerHTML = this._renderWeek()
-    this._renderEditor(participants)
+    if (this._dialog?.open) {
+      this._renderDialog()
+    }
   }
 
   _renderWeek() {
@@ -548,7 +572,7 @@ class DinnerAttendanceCard extends HTMLElement {
   _renderDayRow(day, dayState) {
     const dinnerNames = Array.isArray(dayState?.dinner_names) ? dayState.dinner_names : []
     const overnightNames = Array.isArray(dayState?.overnight_names) ? dayState.overnight_names : []
-    const selected = this._selectedDay === day.key ? " selected" : ""
+    const selected = this._selectedDay === day.key && this._dialog?.open ? " selected" : ""
 
     return `
       <button class="day-row${selected}" data-day-row="${day.key}" type="button">
@@ -567,73 +591,127 @@ class DinnerAttendanceCard extends HTMLElement {
     `
   }
 
-  _renderEditor(participants) {
-    const showEditor = this._editorOpen || participants.length === 0
-    this._editor.hidden = !showEditor
-    if (!showEditor) {
+  _openDialog() {
+    this._renderDialog()
+    this._dialog.open = true
+    this._renderState()
+  }
+
+  _renderDialog() {
+    if (!this._dialog || !this._selectedDay) {
       return
     }
 
     const day = DAT_DAYS.find((item) => item.key === this._selectedDay) || DAT_DAYS[0]
     const dayState = this._days()[day.key] || { dinner: [], overnight: [] }
+    const participants = this._participants()
+    const meEntity = this._config.me_entity
+    const otherParticipants = participants.filter((participant) => participant.id !== meEntity)
     const personOptions = this._personOptions(participants)
 
-    this._editor.innerHTML = `
-      <div class="editor-head">
-        <div class="editor-title">${day.name}</div>
-        <button class="text-button" data-clear-day type="button">Tag leeren</button>
-      </div>
+    this._dialog.innerHTML = `
+      <div class="dialog-content">
+        <div class="dialog-head">
+          <div class="dialog-title">${day.name}</div>
+          <button class="icon-button" data-close-dialog title="Schließen" aria-label="Schließen" type="button">
+            <ha-icon icon="mdi:close"></ha-icon>
+          </button>
+        </div>
 
-      <div class="participant-list">
-        ${participants.length ? participants.map((participant) => (
-          this._renderParticipantRow(participant, dayState)
-        )).join("") : '<div class="message">Noch keine Personen oder Gäste.</div>'}
-      </div>
+        ${this._renderMeSection(dayState)}
 
-      <div class="add-grid">
-        <label class="field">
-          <span>Home Assistant Person</span>
-          <select id="person-select">
-            ${personOptions.length
-              ? '<option value="">Person wählen...</option>' + personOptions.map((person) => (
-                `<option value="${this._escapeAttr(person.entityId)}">${this._escapeHtml(person.name)}</option>`
-              )).join("")
-              : '<option value="">Keine weiteren Personen</option>'}
-          </select>
-        </label>
-        <button class="text-button" data-add-person type="button" ${personOptions.length ? "" : "disabled"}>Hinzufügen</button>
-      </div>
+        <section class="dialog-section">
+          <div class="section-title">Andere Personen und Gäste</div>
+          <div class="participant-list">
+            ${otherParticipants.length ? otherParticipants.map((participant) => (
+              this._renderParticipantRow(participant, dayState, { removable: true })
+            )).join("") : '<div class="message">Keine weiteren Personen oder Gäste.</div>'}
+          </div>
+        </section>
 
-      <div class="add-grid">
-        <label class="field">
-          <span>Gast</span>
-          <input id="guest-name" type="text" autocomplete="off" placeholder="Name">
-        </label>
-        <button class="text-button" data-add-guest type="button">Hinzufügen</button>
-      </div>
+        <section class="dialog-section">
+          <div class="section-title">Hinzufügen</div>
+          <div class="add-grid">
+            <label class="field">
+              <span>Home Assistant Person</span>
+              <select id="person-select">
+                ${personOptions.length
+                  ? '<option value="">Person wählen...</option>' + personOptions.map((person) => (
+                    `<option value="${this._escapeAttr(person.entityId)}">${this._escapeHtml(person.name)}</option>`
+                  )).join("")
+                  : '<option value="">Keine weiteren Personen</option>'}
+              </select>
+            </label>
+            <button class="text-button" data-add-person type="button" ${personOptions.length ? "" : "disabled"}>Hinzufügen</button>
+          </div>
 
-      <div class="editor-head">
-        <span></span>
-        <button class="text-button danger" data-reset-week type="button">Woche leeren</button>
+          <div class="add-grid">
+            <label class="field">
+              <span>Gast</span>
+              <input id="guest-name" type="text" autocomplete="off" placeholder="Name">
+            </label>
+            <button class="text-button" data-add-guest type="button">Hinzufügen</button>
+          </div>
+        </section>
+
+        <div class="dialog-head">
+          <button class="text-button" data-clear-day type="button">Tag auf Standard</button>
+          <button class="text-button danger" data-reset-week type="button">Woche auf Standard</button>
+        </div>
       </div>
     `
   }
 
-  _renderParticipantRow(participant, dayState) {
+  _renderMeSection(dayState) {
+    const meEntity = this._config.me_entity
+    if (!meEntity) {
+      return ""
+    }
+
+    const meParticipant = this._participantById(meEntity) || {
+      id: meEntity,
+      type: "person",
+      name: this._friendlyPersonName(meEntity),
+      entity_id: meEntity,
+      default_dinner: this._configuredDefaults().get(meEntity)?.dinner || false,
+      default_overnight: this._configuredDefaults().get(meEntity)?.overnight || false
+    }
+
+    return `
+      <section class="dialog-section">
+        <div class="section-title">Ich</div>
+        <div class="participant-list">
+          ${this._renderParticipantRow(meParticipant, dayState, {
+            removable: false,
+            me: true,
+            ensurePerson: meEntity
+          })}
+        </div>
+      </section>
+    `
+  }
+
+  _renderParticipantRow(participant, dayState, options = {}) {
     const participantId = String(participant.id)
     const dinner = Array.isArray(dayState.dinner) && dayState.dinner.includes(participantId)
     const overnight = Array.isArray(dayState.overnight) && dayState.overnight.includes(participantId)
     const escapedId = this._escapeAttr(participantId)
     const escapedName = this._escapeHtml(participant.name)
+    const ensureAttr = options.ensurePerson ? ` data-person-entity-id="${this._escapeAttr(options.ensurePerson)}"` : ""
+    const meta = this._participantMeta(participant)
 
     return `
-      <div class="participant-row">
-        <div class="participant-name" title="${this._escapeAttr(participant.name)}">${escapedName}</div>
+      <div class="participant-row${options.me ? " me" : ""}">
+        <div class="participant-name-wrap">
+          <div class="participant-name" title="${this._escapeAttr(participant.name)}">${escapedName}</div>
+          ${meta ? `<div class="participant-meta">${meta}</div>` : ""}
+        </div>
         <div class="toggle-group">
           <button
             class="toggle"
             data-attendance-action="dinner"
             data-participant-id="${escapedId}"
+            ${ensureAttr}
             aria-pressed="${dinner ? "true" : "false"}"
             title="Abendessen"
             type="button"
@@ -645,6 +723,7 @@ class DinnerAttendanceCard extends HTMLElement {
             class="toggle"
             data-attendance-action="overnight"
             data-participant-id="${escapedId}"
+            ${ensureAttr}
             aria-pressed="${overnight ? "true" : "false"}"
             title="Übernachtung"
             type="button"
@@ -653,17 +732,30 @@ class DinnerAttendanceCard extends HTMLElement {
             Nacht
           </button>
         </div>
-        <button
-          class="remove-button"
-          data-remove-participant="${escapedId}"
-          title="Entfernen"
-          aria-label="Entfernen"
-          type="button"
-        >
-          <ha-icon icon="mdi:close"></ha-icon>
-        </button>
+        ${options.removable ? `
+          <button
+            class="remove-button"
+            data-remove-participant="${escapedId}"
+            title="Entfernen"
+            aria-label="Entfernen"
+            type="button"
+          >
+            <ha-icon icon="mdi:close"></ha-icon>
+          </button>
+        ` : '<span></span>'}
       </div>
     `
+  }
+
+  _participantMeta(participant) {
+    const badges = []
+    if (participant.default_dinner) {
+      badges.push('<span class="mini-badge">Standard Essen</span>')
+    }
+    if (participant.default_overnight) {
+      badges.push('<span class="mini-badge">Standard Nacht</span>')
+    }
+    return badges.join("")
   }
 
   _chips(names, type) {
@@ -679,11 +771,17 @@ class DinnerAttendanceCard extends HTMLElement {
   async _handleToggle(toggle) {
     const participantId = toggle.getAttribute("data-participant-id")
     const action = toggle.getAttribute("data-attendance-action")
+    const personEntityId = toggle.getAttribute("data-person-entity-id")
     if (!participantId || !action || !this._selectedDay) {
       return
     }
 
     const enabled = toggle.getAttribute("aria-pressed") !== "true"
+    if (personEntityId && !this._participantById(participantId)) {
+      await this._callService("add_person", { person_entity_id: personEntityId })
+      await this._applyConfiguredDefault(personEntityId)
+    }
+
     await this._callService("set_attendance", {
       day: this._selectedDay,
       participant_id: participantId,
@@ -700,6 +798,7 @@ class DinnerAttendanceCard extends HTMLElement {
     }
 
     await this._callService("add_person", { person_entity_id: personEntityId })
+    await this._applyConfiguredDefault(personEntityId)
     if (select) {
       select.value = ""
     }
@@ -737,16 +836,68 @@ class DinnerAttendanceCard extends HTMLElement {
     await this._callService("reset_week", {})
   }
 
-  async _callService(service, payload) {
+  async _syncConfiguredPeople() {
+    if (this._syncRunning || !this._hass || !this._trackerState()) {
+      return
+    }
+
+    const people = new Set([...this._configuredDefaults().keys()])
+    if (this._config.me_entity) {
+      people.add(this._config.me_entity)
+    }
+    if (!people.size) {
+      return
+    }
+
+    this._syncRunning = true
+    try {
+      for (const personEntityId of people) {
+        if (!this._participantById(personEntityId)) {
+          await this._callService("add_person", { person_entity_id: personEntityId }, { silent: true })
+        }
+        await this._applyConfiguredDefault(personEntityId, { silent: true })
+      }
+    } finally {
+      this._syncRunning = false
+    }
+  }
+
+  async _applyConfiguredDefault(personEntityId, options = {}) {
+    const configured = this._configuredDefaults().get(personEntityId)
+    if (!configured) {
+      return
+    }
+
+    const participant = this._participantById(personEntityId)
+    if (
+      participant &&
+      Boolean(participant.default_dinner) === Boolean(configured.dinner) &&
+      Boolean(participant.default_overnight) === Boolean(configured.overnight)
+    ) {
+      return
+    }
+
+    await this._callService("set_person_defaults", {
+      participant_id: personEntityId,
+      default_dinner: Boolean(configured.dinner),
+      default_overnight: Boolean(configured.overnight)
+    }, options)
+  }
+
+  async _callService(service, payload, options = {}) {
     try {
       const data = { ...payload }
       if (this._config.entity) {
         data.entity_id = this._config.entity
       }
       await this._hass.callService(DAT_DOMAIN, service, data)
-      this._setStatus("", false)
+      if (!options.silent) {
+        this._setStatus("", false)
+      }
     } catch (error) {
-      this._setStatus(`Fehler: ${error?.message || error}`, true)
+      if (!options.silent) {
+        this._setStatus(`Fehler: ${error?.message || error}`, true)
+      }
     }
   }
 
@@ -764,6 +915,10 @@ class DinnerAttendanceCard extends HTMLElement {
   _participants() {
     const participants = this._attributes().participants
     return Array.isArray(participants) ? participants : []
+  }
+
+  _participantById(participantId) {
+    return this._participants().find((participant) => participant.id === participantId) || null
   }
 
   _days() {
@@ -791,6 +946,9 @@ class DinnerAttendanceCard extends HTMLElement {
         .map((participant) => participant.entity_id)
         .filter(Boolean)
     )
+    if (this._config.me_entity) {
+      selectedEntities.add(this._config.me_entity)
+    }
 
     return Object.entries(this._hass?.states || {})
       .filter(([entityId]) => entityId.startsWith("person."))
@@ -800,6 +958,50 @@ class DinnerAttendanceCard extends HTMLElement {
         name: state?.attributes?.friendly_name || entityId.replace(/^person\./, "").replace(/_/g, " ")
       }))
       .sort((left, right) => left.name.localeCompare(right.name))
+  }
+
+  _configuredDefaults() {
+    const defaults = new Map()
+    for (const entityId of this._config.default_dinner) {
+      defaults.set(entityId, { ...(defaults.get(entityId) || {}), dinner: true })
+    }
+    for (const entityId of this._config.default_overnight) {
+      defaults.set(entityId, { ...(defaults.get(entityId) || {}), overnight: true })
+    }
+    for (const entry of this._config.defaults) {
+      const entityId = entry?.person || entry?.entity || entry?.entity_id
+      if (!entityId) {
+        continue
+      }
+      defaults.set(entityId, {
+        ...(defaults.get(entityId) || {}),
+        dinner: Boolean(entry.dinner),
+        overnight: Boolean(entry.overnight)
+      })
+    }
+
+    for (const [entityId, value] of defaults.entries()) {
+      defaults.set(entityId, {
+        dinner: Boolean(value.dinner),
+        overnight: Boolean(value.overnight)
+      })
+    }
+    return defaults
+  }
+
+  _entityList(value) {
+    if (!value) {
+      return []
+    }
+    const raw = Array.isArray(value) ? value : [value]
+    return raw
+      .map((item) => String(item || "").trim())
+      .filter((item) => item.startsWith("person."))
+  }
+
+  _friendlyPersonName(entityId) {
+    const state = this._hass?.states?.[entityId]
+    return state?.attributes?.friendly_name || entityId.replace(/^person\./, "").replace(/_/g, " ")
   }
 
   _missingMessage() {

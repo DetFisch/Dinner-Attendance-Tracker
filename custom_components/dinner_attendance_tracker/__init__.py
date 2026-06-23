@@ -20,6 +20,8 @@ from .const import (
     DEFAULT_TRACKER_NAME,
     DOMAIN,
     FIELD_DAY,
+    FIELD_DEFAULT_DINNER,
+    FIELD_DEFAULT_OVERNIGHT,
     FIELD_DINNER,
     FIELD_ENTITY_ID,
     FIELD_NAME,
@@ -31,6 +33,7 @@ from .const import (
     SERVICE_CLEAR_DAY,
     SERVICE_REMOVE_PARTICIPANT,
     SERVICE_RESET_WEEK,
+    SERVICE_SET_PERSON_DEFAULTS,
     SERVICE_SET_ATTENDANCE,
 )
 
@@ -143,6 +146,7 @@ async def async_unload_entry(hass: Any, entry: Any) -> bool:
             SERVICE_ADD_PERSON,
             SERVICE_ADD_GUEST,
             SERVICE_REMOVE_PARTICIPANT,
+            SERVICE_SET_PERSON_DEFAULTS,
             SERVICE_SET_ATTENDANCE,
             SERVICE_CLEAR_DAY,
             SERVICE_RESET_WEEK,
@@ -223,6 +227,14 @@ def _register_services(hass: Any) -> None:
             vol.Required(FIELD_PARTICIPANT_ID): str,
         }
     )
+    service_schema_set_person_defaults = vol.Schema(
+        {
+            vol.Optional(FIELD_ENTITY_ID): str,
+            vol.Required(FIELD_PARTICIPANT_ID): str,
+            vol.Optional(FIELD_DEFAULT_DINNER): vol.Coerce(bool),
+            vol.Optional(FIELD_DEFAULT_OVERNIGHT): vol.Coerce(bool),
+        }
+    )
     service_schema_set_attendance = vol.Schema(
         {
             vol.Optional(FIELD_ENTITY_ID): str,
@@ -254,6 +266,14 @@ def _register_services(hass: Any) -> None:
     async def handle_remove_participant(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
         await manager.async_remove_participant(str(call.data[FIELD_PARTICIPANT_ID]))
+
+    async def handle_set_person_defaults(call: Any) -> None:
+        manager = _resolve_manager(hass, call.data)
+        await manager.async_set_person_defaults(
+            str(call.data[FIELD_PARTICIPANT_ID]),
+            default_dinner=call.data.get(FIELD_DEFAULT_DINNER),
+            default_overnight=call.data.get(FIELD_DEFAULT_OVERNIGHT),
+        )
 
     async def handle_set_attendance(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
@@ -289,6 +309,12 @@ def _register_services(hass: Any) -> None:
         SERVICE_REMOVE_PARTICIPANT,
         handle_remove_participant,
         schema=service_schema_remove_participant,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_PERSON_DEFAULTS,
+        handle_set_person_defaults,
+        schema=service_schema_set_person_defaults,
     )
     hass.services.async_register(
         DOMAIN,

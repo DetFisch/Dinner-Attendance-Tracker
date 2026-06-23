@@ -55,6 +55,32 @@ remove_participant:
       selector:
         text:
 
+set_person_defaults:
+  name: Standard-Anwesenheit setzen
+  description: Setzt, ob eine Home Assistant Person standardmäßig jede Woche zum Abendessen da ist und/oder übernachtet. Tagesänderungen sind dann Ausnahmen.
+  fields:
+    entity_id:
+      name: Tracker Entity
+      description: Sensor des Dinner Attendance Trackers. Nur nötig, wenn mehrere Tracker existieren.
+      selector:
+        entity:
+          domain: sensor
+    participant_id:
+      name: Person-ID
+      description: ID der Home Assistant person-Entity, z. B. person.jon.
+      required: true
+      selector:
+        entity:
+          domain: person
+    default_dinner:
+      name: Standard Abendessen
+      selector:
+        boolean:
+    default_overnight:
+      name: Standard Übernachtung
+      selector:
+        boolean:
+
 set_attendance:
   name: Anwesenheit setzen
   description: Setzt Abendessen und/oder Übernachtung für einen Teilnehmer an einem Wochentag.

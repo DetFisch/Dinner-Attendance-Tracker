@@ -6,3 +6,8 @@ views:
       - type: custom:dinner-attendance-card
         entity: sensor.dinner_attendance
         name: Abendessen
+        me_entity: person.jon
+        default_dinner:
+          - person.jon
+        default_overnight:
+          - person.jon
