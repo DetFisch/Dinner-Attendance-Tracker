@@ -12,9 +12,9 @@ Home Assistant Custom Integration mit gebündelter Lovelace-Card für einen einf
 
 1. Repository per HACS als `Integration` installieren oder `custom_components/dinner_attendance_tracker` nach `<HA_CONFIG>/custom_components/dinner_attendance_tracker` kopieren.
 2. Home Assistant neu starten.
-3. Integration hinzufügen: `Einstellungen` > `Geräte & Dienste` > `Integration hinzufügen` > `Dinner Attendance Tracker`.
+3. Integration hinzufügen: `Einstellungen` > `Geräte & Dienste` > `Integration hinzufügen` > `Dinner Attendance Tracker`. Es wird automatisch ein Tracker `dinner_attendance` angelegt.
 4. Lovelace Resource hinzufügen:
-   - URL: `/dinner_attendance_tracker/dinner-attendance-card.js?v=0.1.3`
+   - URL: `/dinner_attendance_tracker/dinner-attendance-card.js?v=0.1.4`
    - Typ: `module`
 5. Browser Hard-Reload (`Ctrl+F5`).
 
