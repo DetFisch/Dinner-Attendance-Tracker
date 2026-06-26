@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.2.7"
+const DAT_CARD_VERSION = "0.2.8"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -648,6 +648,7 @@ class DinnerAttendanceCard extends HTMLElement {
       const dayRow = target.closest("[data-day-row]")
       if (dayRow) {
         this._selectedDay = dayRow.getAttribute("data-day-row")
+        this._selectedDate = dayRow.getAttribute("data-day-date")
         this._openDialog()
         return
       }
@@ -792,7 +793,7 @@ class DinnerAttendanceCard extends HTMLElement {
     const days = this._days()
     return `
       <div class="week">
-        ${this._visibleDays().map((day) => this._renderDayRow(day, days[day.key])).join("")}
+        ${this._visibleDays().map((day) => this._renderDayRow(day, days[day.dateKey] || days[day.key])).join("")}
       </div>
     `
   }
@@ -800,10 +801,10 @@ class DinnerAttendanceCard extends HTMLElement {
   _renderDayRow(day, dayState) {
     const dinnerNames = Array.isArray(dayState?.dinner_names) ? dayState.dinner_names : []
     const overnightNames = Array.isArray(dayState?.overnight_names) ? dayState.overnight_names : []
-    const selected = this._selectedDay === day.key && this._dialog?.open ? " selected" : ""
+    const selected = this._selectedDate === day.dateKey && this._dialog?.open ? " selected" : ""
 
     return `
-      <button class="day-row${selected}" data-day-row="${day.key}" title="${this._escapeAttr(day.title)}" type="button">
+      <button class="day-row${selected}" data-day-row="${day.key}" data-day-date="${day.dateKey}" title="${this._escapeAttr(day.title)}" type="button">
         <span class="day-label">
           <span class="day-name">${day.short}</span>
           <span class="day-date">${day.dateLabel}</span>
@@ -862,9 +863,14 @@ class DinnerAttendanceCard extends HTMLElement {
       return
     }
 
-    const day = this._visibleDays().find((item) => item.key === this._selectedDay) || this._visibleDays()[0]
+    const visibleDays = this._visibleDays()
+    const day = visibleDays.find((item) => item.dateKey === this._selectedDate)
+      || visibleDays.find((item) => item.key === this._selectedDay)
+      || visibleDays[0]
+    this._selectedDay = day.key
+    this._selectedDate = day.dateKey
     const dayTitle = `${day.name} ${day.dateLabel}`
-    const dayState = this._days()[day.key] || { dinner: [], overnight: [] }
+    const dayState = this._days()[day.dateKey] || this._days()[day.key] || { dinner: [], overnight: [] }
     const participants = this._participants()
     const meEntity = this._config.me_entity
     const otherParticipants = participants.filter((participant) => participant.id !== meEntity)
@@ -1107,6 +1113,7 @@ class DinnerAttendanceCard extends HTMLElement {
 
     await this._callService("set_attendance", {
       day: this._selectedDay,
+      date: this._selectedDate,
       participant_id: participantId,
       [action]: enabled
     })
@@ -1223,7 +1230,7 @@ class DinnerAttendanceCard extends HTMLElement {
     if (!this._selectedDay) {
       return
     }
-    await this._callService("clear_day", { day: this._selectedDay })
+    await this._callService("clear_day", { day: this._selectedDay, date: this._selectedDate })
   }
 
   async _handleResetWeek() {
@@ -1340,9 +1347,11 @@ class DinnerAttendanceCard extends HTMLElement {
       const date = new Date(todayStart)
       date.setDate(todayStart.getDate() + offset)
       const dateLabel = this._formatDateLabel(date)
+      const dateKey = this._dateKey(date)
       return {
         ...baseDay,
         date,
+        dateKey,
         dateLabel,
         isToday: offset === 0,
         title: `${baseDay.name} ${dateLabel}`
@@ -1354,6 +1363,13 @@ class DinnerAttendanceCard extends HTMLElement {
     const day = String(date.getDate()).padStart(2, "0")
     const month = String(date.getMonth() + 1).padStart(2, "0")
     return `${day}.${month}`
+  }
+
+  _dateKey(date) {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
   }
 
   _isDayKey(dayKey) {

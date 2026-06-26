@@ -83,7 +83,7 @@ set_person_defaults:
 
 set_attendance:
   name: Anwesenheit setzen
-  description: Setzt Abendessen und/oder Übernachtung für einen Teilnehmer an einem Wochentag.
+  description: Setzt Abendessen und/oder Übernachtung für einen Teilnehmer an einem konkreten Datum. Ohne date wird der Wochentag der aktuellen Kalenderwoche verwendet.
   fields:
     entity_id:
       name: Tracker Entity
@@ -111,6 +111,11 @@ set_attendance:
               value: sat
             - label: Sonntag
               value: sun
+    date:
+      name: Datum
+      description: Konkretes Datum im Format YYYY-MM-DD. Dadurch gilt die Änderung nur einmalig für dieses Datum.
+      selector:
+        date:
     participant_id:
       name: Teilnehmer-ID
       description: ID aus dem participants-Attribut.
@@ -128,7 +133,7 @@ set_attendance:
 
 clear_day:
   name: Tag leeren
-  description: Entfernt alle Einträge für einen Wochentag.
+  description: Entfernt alle Einträge für ein konkretes Datum. Ohne date wird der Wochentag der aktuellen Kalenderwoche verwendet.
   fields:
     entity_id:
       name: Tracker Entity
@@ -156,6 +161,11 @@ clear_day:
               value: sat
             - label: Sonntag
               value: sun
+    date:
+      name: Datum
+      description: Konkretes Datum im Format YYYY-MM-DD.
+      selector:
+        date:
 
 reset_week:
   name: Woche leeren

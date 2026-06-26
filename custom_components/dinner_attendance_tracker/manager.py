@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, timedelta
 from typing import Any
 from uuid import uuid4
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
@@ -60,6 +62,7 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
         self._tracker_id = tracker_id
         self._tracker_name = tracker_name or DEFAULT_TRACKER_NAME
         self._data: dict[str, Any] = {}
+        self._unsub_date_refresh = None
 
     async def async_initialize(self) -> None:
         """Load persisted state and normalize it."""
@@ -72,6 +75,7 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
             await self._save()
 
         self.async_set_updated_data(self._public_data())
+        self._schedule_date_refresh()
 
     def tracker_id(self) -> str:
         """Return the configured tracker id."""
@@ -80,6 +84,12 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
     def tracker_state(self) -> dict[str, Any]:
         """Return public tracker state."""
         return self._public_data()
+
+    def async_shutdown(self) -> None:
+        """Stop scheduled callbacks."""
+        if self._unsub_date_refresh is not None:
+            self._unsub_date_refresh()
+            self._unsub_date_refresh = None
 
     async def async_add_person(
         self,
@@ -171,7 +181,7 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
         await self._save_and_publish()
 
     async def async_remove_participant(self, participant_id: str) -> None:
-        """Remove a participant from the tracker and every day."""
+        """Remove a participant from the tracker and every stored date."""
         participants = self._data[ATTR_PARTICIPANTS]
         kept_participants = [
             participant
@@ -200,15 +210,17 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
         participant_id: str,
         dinner: bool | None = None,
         overnight: bool | None = None,
+        date_key: str | None = None,
     ) -> None:
-        """Set dinner and/or overnight attendance for one participant on one day."""
+        """Set dinner and/or overnight attendance for one participant on one date."""
         day_key = self._normalize_day(day_key)
+        date_key = self._normalize_or_resolve_date(date_key, day_key)
         if dinner is None and overnight is None:
             raise HomeAssistantError("Provide dinner or overnight")
         if participant_id not in self._participant_ids():
             raise HomeAssistantError("participant_id not found")
 
-        day = self._data[ATTR_DAYS][day_key]
+        day = self._data[ATTR_DAYS].setdefault(date_key, self._empty_day())
         if dinner is not None:
             self._set_attendance_membership(
                 day,
@@ -231,15 +243,17 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
         self._sort_day_lists(day)
         await self._save_and_publish()
 
-    async def async_clear_day(self, day_key: str) -> None:
-        """Clear all attendance for one day."""
+    async def async_clear_day(self, day_key: str, date_key: str | None = None) -> None:
+        """Clear all attendance overrides for one date."""
         day_key = self._normalize_day(day_key)
-        self._data[ATTR_DAYS][day_key] = self._empty_day()
+        date_key = self._normalize_or_resolve_date(date_key, day_key)
+        self._data[ATTR_DAYS].pop(date_key, None)
         await self._save_and_publish()
 
     async def async_reset_week(self) -> None:
-        """Clear the whole weekly plan."""
-        self._data[ATTR_DAYS] = self._empty_days()
+        """Clear the visible rolling seven-day plan."""
+        for date_key in self._visible_date_keys():
+            self._data[ATTR_DAYS].pop(date_key, None)
         await self._save_and_publish()
 
     def _normalize(self) -> bool:
@@ -307,17 +321,23 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
 
         days = self._data.get(ATTR_DAYS)
         if not isinstance(days, dict):
-            self._data[ATTR_DAYS] = self._empty_days()
+            self._data[ATTR_DAYS] = {}
             return True
 
         known_ids = self._participant_ids()
         normalized_days: dict[str, dict[str, list[str]]] = {}
-        for day_key in DAY_KEYS:
-            day = days.get(day_key)
+        for raw_key, day in days.items():
             if not isinstance(day, dict):
-                normalized_days[day_key] = self._empty_day()
                 changed = True
                 continue
+
+            date_key = self._normalize_date_key(raw_key)
+            if date_key is None:
+                day_key = str(raw_key).lower().strip()
+                if day_key not in DAY_KEYS:
+                    changed = True
+                    continue
+                date_key = self._date_key_for_current_weekday(day_key)
 
             normalized_day = {
                 "dinner": self._normalize_member_list(day.get("dinner"), known_ids),
@@ -332,11 +352,15 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
                 ),
             }
             self._sort_day_lists(normalized_day)
-            normalized_days[day_key] = normalized_day
-            changed = changed or normalized_day != day
+            if date_key in normalized_days:
+                self._merge_day(normalized_days[date_key], normalized_day)
+            else:
+                normalized_days[date_key] = normalized_day
+            changed = changed or date_key != raw_key or normalized_day != day
 
-        if normalized_days != days:
-            self._data[ATTR_DAYS] = normalized_days
+        pruned_days = self._prune_days(normalized_days)
+        if pruned_days != days:
+            self._data[ATTR_DAYS] = pruned_days
             changed = True
 
         return changed
@@ -345,56 +369,66 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
         participants = [self._public_participant(participant) for participant in self._data[ATTR_PARTICIPANTS]]
         participant_map = {participant["id"]: participant for participant in participants}
         days: dict[str, Any] = {}
-        for day_key in DAY_KEYS:
-            day = self._data[ATTR_DAYS][day_key]
-            dinner = self._public_attendance_ids(
-                day,
-                participant_map,
-                present_key="dinner",
-                absent_key=ATTR_DINNER_ABSENT,
-                default_key=ATTR_DEFAULT_DINNER,
-            )
-            overnight = self._public_attendance_ids(
-                day,
-                participant_map,
-                present_key="overnight",
-                absent_key=ATTR_OVERNIGHT_ABSENT,
-                default_key=ATTR_DEFAULT_OVERNIGHT,
-            )
-            days[day_key] = {
-                "key": day_key,
-                "name": DAY_NAMES[day_key],
-                "dinner": dinner,
-                "overnight": overnight,
-                ATTR_DINNER_ABSENT: [
-                    participant_id
-                    for participant_id in day.get(ATTR_DINNER_ABSENT, [])
-                    if participant_id in participant_map
-                ],
-                ATTR_OVERNIGHT_ABSENT: [
-                    participant_id
-                    for participant_id in day.get(ATTR_OVERNIGHT_ABSENT, [])
-                    if participant_id in participant_map
-                ],
-                "dinner_names": [participant_map[item]["name"] for item in dinner],
-                "overnight_names": [participant_map[item]["name"] for item in overnight],
-                "dinner_count": len(dinner),
-                "overnight_count": len(overnight),
-            }
+        for date_key in self._visible_date_keys():
+            days[date_key] = self._public_day(date_key, participant_map)
 
-        today_key = self._today_key()
-        today = days[today_key]
+        today_date = self._today_date_key()
+        today = days[today_date]
         return {
             CONF_ID: self._tracker_id,
             CONF_NAME: self._tracker_name,
             ATTR_PARTICIPANTS: participants,
             ATTR_DAYS: days,
-            ATTR_TODAY_KEY: today_key,
+            ATTR_TODAY_KEY: today["key"],
             ATTR_TODAY: today,
             ATTR_DINNER_TODAY: today["dinner_names"],
             ATTR_OVERNIGHT_TODAY: today["overnight_names"],
             ATTR_DINNER_COUNT_TODAY: today["dinner_count"],
             ATTR_OVERNIGHT_COUNT_TODAY: today["overnight_count"],
+        }
+
+    def _public_day(
+        self,
+        date_key: str,
+        participant_map: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        day = self._data[ATTR_DAYS].get(date_key, self._empty_day())
+        day_date = self._date_from_key(date_key)
+        day_key = DAY_KEYS[day_date.weekday()]
+        dinner = self._public_attendance_ids(
+            day,
+            participant_map,
+            present_key="dinner",
+            absent_key=ATTR_DINNER_ABSENT,
+            default_key=ATTR_DEFAULT_DINNER,
+        )
+        overnight = self._public_attendance_ids(
+            day,
+            participant_map,
+            present_key="overnight",
+            absent_key=ATTR_OVERNIGHT_ABSENT,
+            default_key=ATTR_DEFAULT_OVERNIGHT,
+        )
+        return {
+            "date": date_key,
+            "key": day_key,
+            "name": DAY_NAMES[day_key],
+            "dinner": dinner,
+            "overnight": overnight,
+            ATTR_DINNER_ABSENT: [
+                participant_id
+                for participant_id in day.get(ATTR_DINNER_ABSENT, [])
+                if participant_id in participant_map
+            ],
+            ATTR_OVERNIGHT_ABSENT: [
+                participant_id
+                for participant_id in day.get(ATTR_OVERNIGHT_ABSENT, [])
+                if participant_id in participant_map
+            ],
+            "dinner_names": [participant_map[item]["name"] for item in dinner],
+            "overnight_names": [participant_map[item]["name"] for item in overnight],
+            "dinner_count": len(dinner),
+            "overnight_count": len(overnight),
         }
 
     def _public_participant(self, participant: dict[str, Any]) -> dict[str, Any]:
@@ -471,6 +505,27 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
     async def _save(self) -> None:
         await self._store.async_save(self._data)
 
+    def _schedule_date_refresh(self) -> None:
+        if self._unsub_date_refresh is not None:
+            self._unsub_date_refresh()
+        now = dt_util.now()
+        next_midnight = (now + timedelta(days=1)).replace(
+            hour=0,
+            minute=0,
+            second=1,
+            microsecond=0,
+        )
+        delay = max(1, (next_midnight - now).total_seconds())
+        self._unsub_date_refresh = async_call_later(
+            self.hass,
+            delay,
+            self._handle_date_refresh,
+        )
+
+    def _handle_date_refresh(self, _now: Any) -> None:
+        self.async_set_updated_data(self._public_data())
+        self._schedule_date_refresh()
+
     @staticmethod
     def _empty_day() -> dict[str, list[str]]:
         return {
@@ -482,7 +537,65 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
 
     @classmethod
     def _empty_days(cls) -> dict[str, dict[str, list[str]]]:
-        return {day_key: cls._empty_day() for day_key in DAY_KEYS}
+        return {}
+
+    def _merge_day(
+        self,
+        target: dict[str, list[str]],
+        source: dict[str, list[str]],
+    ) -> None:
+        for key in ("dinner", "overnight", ATTR_DINNER_ABSENT, ATTR_OVERNIGHT_ABSENT):
+            for participant_id in source.get(key, []):
+                self._set_membership(target.setdefault(key, []), participant_id, True)
+        self._sort_day_lists(target)
+
+    def _normalize_or_resolve_date(self, date_key: Any, day_key: str) -> str:
+        if date_key:
+            normalized = self._normalize_date_key(date_key)
+            if normalized is None:
+                raise HomeAssistantError("date must be YYYY-MM-DD")
+            normalized_day = DAY_KEYS[self._date_from_key(normalized).weekday()]
+            if normalized_day != day_key:
+                raise HomeAssistantError("date does not match day")
+            return normalized
+        return self._date_key_for_current_weekday(day_key)
+
+    @staticmethod
+    def _normalize_date_key(raw_key: Any) -> str | None:
+        try:
+            return date.fromisoformat(str(raw_key).strip()).isoformat()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _date_from_key(date_key: str) -> date:
+        return date.fromisoformat(date_key)
+
+    def _date_key_for_current_weekday(self, day_key: str) -> str:
+        today = dt_util.now().date()
+        monday = today - timedelta(days=today.weekday())
+        return (monday + timedelta(days=DAY_KEYS.index(day_key))).isoformat()
+
+    def _visible_date_keys(self) -> list[str]:
+        today = dt_util.now().date()
+        return [(today + timedelta(days=offset)).isoformat() for offset in range(7)]
+
+    def _today_date_key(self) -> str:
+        return dt_util.now().date().isoformat()
+
+    def _prune_days(
+        self,
+        days: dict[str, dict[str, list[str]]],
+    ) -> dict[str, dict[str, list[str]]]:
+        today = dt_util.now().date()
+        earliest = today - timedelta(days=14)
+        latest = today + timedelta(days=90)
+        pruned: dict[str, dict[str, list[str]]] = {}
+        for date_key, day in days.items():
+            day_date = self._date_from_key(date_key)
+            if earliest <= day_date <= latest:
+                pruned[date_key] = day
+        return pruned
 
     def _set_attendance_membership(
         self,

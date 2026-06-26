@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_TRACKER_NAME,
     DOMAIN,
     FIELD_DAY,
+    FIELD_DATE,
     FIELD_DEFAULT_DINNER,
     FIELD_DEFAULT_OVERNIGHT,
     FIELD_DINNER,
@@ -139,7 +140,9 @@ async def async_unload_entry(hass: Any, entry: Any) -> bool:
         return False
 
     domain_data = _ensure_domain_data(hass)
-    domain_data[DATA_ENTRIES].pop(entry.entry_id, None)
+    entry_data = domain_data[DATA_ENTRIES].pop(entry.entry_id, None)
+    if entry_data is not None:
+        entry_data[DATA_MANAGER].async_shutdown()
 
     if not domain_data[DATA_ENTRIES] and domain_data[DATA_SERVICES_REGISTERED]:
         for service in (
@@ -239,6 +242,7 @@ def _register_services(hass: Any) -> None:
         {
             vol.Optional(FIELD_ENTITY_ID): str,
             vol.Required(FIELD_DAY): vol.In(DAY_KEYS),
+            vol.Optional(FIELD_DATE): str,
             vol.Required(FIELD_PARTICIPANT_ID): str,
             vol.Optional(FIELD_DINNER): vol.Coerce(bool),
             vol.Optional(FIELD_OVERNIGHT): vol.Coerce(bool),
@@ -248,6 +252,7 @@ def _register_services(hass: Any) -> None:
         {
             vol.Optional(FIELD_ENTITY_ID): str,
             vol.Required(FIELD_DAY): vol.In(DAY_KEYS),
+            vol.Optional(FIELD_DATE): str,
         }
     )
     service_schema_reset_week = vol.Schema({vol.Optional(FIELD_ENTITY_ID): str})
@@ -282,11 +287,12 @@ def _register_services(hass: Any) -> None:
             str(call.data[FIELD_PARTICIPANT_ID]),
             dinner=call.data.get(FIELD_DINNER),
             overnight=call.data.get(FIELD_OVERNIGHT),
+            date_key=call.data.get(FIELD_DATE),
         )
 
     async def handle_clear_day(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
-        await manager.async_clear_day(str(call.data[FIELD_DAY]))
+        await manager.async_clear_day(str(call.data[FIELD_DAY]), date_key=call.data.get(FIELD_DATE))
 
     async def handle_reset_week(call: Any) -> None:
         manager = _resolve_manager(hass, call.data)
