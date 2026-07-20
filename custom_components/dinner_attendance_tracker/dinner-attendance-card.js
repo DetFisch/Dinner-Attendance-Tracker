@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.2.8"
+const DAT_CARD_VERSION = "0.3.0"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -205,19 +205,18 @@ class DinnerAttendanceCard extends HTMLElement {
           white-space: nowrap;
         }
 
-        .chip.dinner {
-          background: rgba(67, 160, 71, 0.16);
-          background: color-mix(in srgb, var(--success-color, #43a047) 18%, transparent);
-        }
-
-        .chip.overnight {
+        .chip.addition {
+          color: var(--info-color, #039be5);
           background: rgba(3, 155, 229, 0.16);
           background: color-mix(in srgb, var(--info-color, #039be5) 18%, transparent);
         }
 
-        .empty {
-          color: var(--secondary-text-color);
-          font-size: 0.82rem;
+        .chip.absence {
+          color: var(--error-color, #db4437);
+          background: rgba(219, 68, 55, 0.14);
+          background: color-mix(in srgb, var(--error-color, #db4437) 16%, transparent);
+          text-decoration: line-through;
+          text-decoration-thickness: 1px;
         }
 
         ha-dialog {
@@ -790,17 +789,18 @@ class DinnerAttendanceCard extends HTMLElement {
   }
 
   _renderWeek() {
-    const days = this._days()
     return `
       <div class="week">
-        ${this._visibleDays().map((day) => this._renderDayRow(day, days[day.dateKey] || days[day.key])).join("")}
+        ${this._visibleDays().map((day) => this._renderDayRow(day, this._dayState(day.dateKey, day.key))).join("")}
       </div>
     `
   }
 
   _renderDayRow(day, dayState) {
-    const dinnerNames = Array.isArray(dayState?.dinner_names) ? dayState.dinner_names : []
-    const overnightNames = Array.isArray(dayState?.overnight_names) ? dayState.overnight_names : []
+    const dinnerAbsent = this._deviationNames(dayState, "dinner", "absent")
+    const dinnerAdditions = this._deviationNames(dayState, "dinner", "addition")
+    const overnightAbsent = this._deviationNames(dayState, "overnight", "absent")
+    const overnightAdditions = this._deviationNames(dayState, "overnight", "addition")
     const selected = this._selectedDate === day.dateKey && this._dialog?.open ? " selected" : ""
 
     return `
@@ -812,11 +812,11 @@ class DinnerAttendanceCard extends HTMLElement {
         <span class="day-lines">
           <span class="line">
             <ha-icon icon="mdi:silverware-fork-knife" title="Abendessen"></ha-icon>
-            <span class="chip-row">${this._chips(dinnerNames, "dinner")}</span>
+            <span class="chip-row">${this._deviationChips(dinnerAbsent, dinnerAdditions)}</span>
           </span>
           <span class="line">
             <ha-icon icon="mdi:bed" title="Übernachtung"></ha-icon>
-            <span class="chip-row">${this._chips(overnightNames, "overnight")}</span>
+            <span class="chip-row">${this._deviationChips(overnightAbsent, overnightAdditions)}</span>
           </span>
         </span>
       </button>
@@ -870,7 +870,7 @@ class DinnerAttendanceCard extends HTMLElement {
     this._selectedDay = day.key
     this._selectedDate = day.dateKey
     const dayTitle = `${day.name} ${day.dateLabel}`
-    const dayState = this._days()[day.dateKey] || this._days()[day.key] || { dinner: [], overnight: [] }
+    const dayState = this._dayState(day.dateKey, day.key)
     const participants = this._participants()
     const meEntity = this._config.me_entity
     const otherParticipants = participants.filter((participant) => participant.id !== meEntity)
@@ -1087,14 +1087,15 @@ class DinnerAttendanceCard extends HTMLElement {
     `
   }
 
-  _chips(names, type) {
-    if (!names.length) {
-      return '<span class="empty">Niemand</span>'
-    }
-
-    return names.map((name) => (
-      `<span class="chip ${type}" title="${this._escapeAttr(name)}">${this._escapeHtml(name)}</span>`
-    )).join("")
+  _deviationChips(absentNames, additionNames) {
+    return [
+      ...absentNames.map((name) => (
+        `<span class="chip absence" title="${this._escapeAttr(name)}: abgemeldet">${this._escapeHtml(name)}</span>`
+      )),
+      ...additionNames.map((name) => (
+        `<span class="chip addition" title="${this._escapeAttr(name)}: zusätzlich dabei">${this._escapeHtml(name)}</span>`
+      ))
+    ].join("")
   }
 
   async _handleToggle(toggle) {
@@ -1327,6 +1328,49 @@ class DinnerAttendanceCard extends HTMLElement {
     return days && typeof days === "object" ? days : {}
   }
 
+  _dayState(dateKey, dayKey) {
+    const raw = this._days()[dateKey] || this._days()[dayKey] || {}
+    const participants = this._participants()
+    const defaultDinner = participants
+      .filter((participant) => Boolean(participant.default_dinner))
+      .map((participant) => participant.id)
+    const defaultOvernight = participants
+      .filter((participant) => Boolean(participant.default_overnight))
+      .map((participant) => participant.id)
+
+    return {
+      ...raw,
+      dinner: Array.isArray(raw.dinner) ? raw.dinner : defaultDinner,
+      overnight: Array.isArray(raw.overnight) ? raw.overnight : defaultOvernight,
+      dinner_absent: Array.isArray(raw.dinner_absent) ? raw.dinner_absent : [],
+      overnight_absent: Array.isArray(raw.overnight_absent) ? raw.overnight_absent : []
+    }
+  }
+
+  _deviationNames(dayState, attendanceType, deviationType) {
+    const namesKey = `${attendanceType}_${deviationType}_names`
+    if (Array.isArray(dayState?.[namesKey])) {
+      return dayState[namesKey]
+    }
+
+    const ids = deviationType === "addition"
+      ? (Array.isArray(dayState?.[`${attendanceType}_additions`])
+          ? dayState[`${attendanceType}_additions`]
+          : (Array.isArray(dayState?.[attendanceType])
+              ? dayState[attendanceType].filter((participantId) => {
+                  const participant = this._participantById(participantId)
+                  return participant && !Boolean(participant[`default_${attendanceType}`])
+                })
+              : []))
+      : (Array.isArray(dayState?.[`${attendanceType}_absent`])
+          ? dayState[`${attendanceType}_absent`]
+          : [])
+
+    return ids
+      .map((participantId) => this._participantById(participantId)?.name)
+      .filter(Boolean)
+  }
+
   _todayKey() {
     const attrToday = this._attributes().today_key
     if (this._isDayKey(attrToday)) {
@@ -1338,6 +1382,27 @@ class DinnerAttendanceCard extends HTMLElement {
   }
 
   _visibleDays() {
+    const sensorDateKeys = Object.keys(this._days())
+      .filter((key) => /^\d{4}-\d{2}-\d{2}$/.test(key))
+      .sort()
+      .slice(0, 7)
+    if (sensorDateKeys.length === 7) {
+      return sensorDateKeys.map((dateKey, offset) => {
+        const [year, month, dayOfMonth] = dateKey.split("-").map(Number)
+        const date = new Date(year, month - 1, dayOfMonth)
+        const baseDay = DAT_DAYS[(date.getDay() + 6) % 7]
+        const dateLabel = this._formatDateLabel(date)
+        return {
+          ...baseDay,
+          date,
+          dateKey,
+          dateLabel,
+          isToday: offset === 0,
+          title: `${baseDay.name} ${dateLabel}`
+        }
+      })
+    }
+
     const today = new Date()
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const todayIndex = (todayStart.getDay() + 6) % 7

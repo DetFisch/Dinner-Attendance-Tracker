@@ -169,7 +169,7 @@ clear_day:
 
 reset_week:
   name: Woche leeren
-  description: Entfernt alle Einträge aus allen sieben Wochentagen.
+  description: Entfernt alle Abweichungen für heute und die nächsten sechs Tage.
   fields:
     entity_id:
       name: Tracker Entity

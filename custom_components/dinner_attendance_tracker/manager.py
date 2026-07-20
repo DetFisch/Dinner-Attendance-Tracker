@@ -19,10 +19,12 @@ from .const import (
     ATTR_DEFAULT_DINNER,
     ATTR_DEFAULT_OVERNIGHT,
     ATTR_DAYS,
+    ATTR_DINNER_ADDITIONS,
     ATTR_DINNER_ABSENT,
     ATTR_DINNER_COUNT_TODAY,
     ATTR_DINNER_TODAY,
     ATTR_OVERNIGHT_ABSENT,
+    ATTR_OVERNIGHT_ADDITIONS,
     ATTR_OVERNIGHT_COUNT_TODAY,
     ATTR_OVERNIGHT_TODAY,
     ATTR_PARTICIPANTS,
@@ -144,9 +146,23 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError("Provide default_dinner or default_overnight")
 
         if default_dinner is not None:
-            participant[ATTR_DEFAULT_DINNER] = bool(default_dinner)
+            new_default_dinner = bool(default_dinner)
+            if new_default_dinner != bool(participant.get(ATTR_DEFAULT_DINNER, False)):
+                self._clear_participant_overrides(
+                    participant_id,
+                    "dinner",
+                    ATTR_DINNER_ABSENT,
+                )
+            participant[ATTR_DEFAULT_DINNER] = new_default_dinner
         if default_overnight is not None:
-            participant[ATTR_DEFAULT_OVERNIGHT] = bool(default_overnight)
+            new_default_overnight = bool(default_overnight)
+            if new_default_overnight != bool(participant.get(ATTR_DEFAULT_OVERNIGHT, False)):
+                self._clear_participant_overrides(
+                    participant_id,
+                    "overnight",
+                    ATTR_OVERNIGHT_ABSENT,
+                )
+            participant[ATTR_DEFAULT_OVERNIGHT] = new_default_overnight
 
         await self._save_and_publish()
 
@@ -193,14 +209,17 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
 
         self._data[ATTR_PARTICIPANTS] = kept_participants
         for day in self._data[ATTR_DAYS].values():
-            day["dinner"] = [
-                current_id for current_id in day["dinner"] if current_id != participant_id
-            ]
-            day["overnight"] = [
-                current_id
-                for current_id in day["overnight"]
-                if current_id != participant_id
-            ]
+            for key in (
+                "dinner",
+                "overnight",
+                ATTR_DINNER_ABSENT,
+                ATTR_OVERNIGHT_ABSENT,
+            ):
+                day[key] = [
+                    current_id
+                    for current_id in day.get(key, [])
+                    if current_id != participant_id
+                ]
 
         await self._save_and_publish()
 
@@ -351,6 +370,7 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
                     known_ids,
                 ),
             }
+            self._canonicalize_day_overrides(normalized_day)
             self._sort_day_lists(normalized_day)
             if date_key in normalized_days:
                 self._merge_day(normalized_days[date_key], normalized_day)
@@ -409,24 +429,64 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
             absent_key=ATTR_OVERNIGHT_ABSENT,
             default_key=ATTR_DEFAULT_OVERNIGHT,
         )
+        dinner_absent = self._public_override_ids(
+            day,
+            participant_map,
+            override_key=ATTR_DINNER_ABSENT,
+            default_key=ATTR_DEFAULT_DINNER,
+            default_value=True,
+        )
+        overnight_absent = self._public_override_ids(
+            day,
+            participant_map,
+            override_key=ATTR_OVERNIGHT_ABSENT,
+            default_key=ATTR_DEFAULT_OVERNIGHT,
+            default_value=True,
+        )
+        dinner_additions = self._public_override_ids(
+            day,
+            participant_map,
+            override_key="dinner",
+            default_key=ATTR_DEFAULT_DINNER,
+            default_value=False,
+        )
+        overnight_additions = self._public_override_ids(
+            day,
+            participant_map,
+            override_key="overnight",
+            default_key=ATTR_DEFAULT_OVERNIGHT,
+            default_value=False,
+        )
         return {
             "date": date_key,
             "key": day_key,
             "name": DAY_NAMES[day_key],
             "dinner": dinner,
             "overnight": overnight,
-            ATTR_DINNER_ABSENT: [
-                participant_id
-                for participant_id in day.get(ATTR_DINNER_ABSENT, [])
-                if participant_id in participant_map
-            ],
-            ATTR_OVERNIGHT_ABSENT: [
-                participant_id
-                for participant_id in day.get(ATTR_OVERNIGHT_ABSENT, [])
-                if participant_id in participant_map
-            ],
+            ATTR_DINNER_ABSENT: dinner_absent,
+            ATTR_OVERNIGHT_ABSENT: overnight_absent,
+            ATTR_DINNER_ADDITIONS: dinner_additions,
+            ATTR_OVERNIGHT_ADDITIONS: overnight_additions,
             "dinner_names": [participant_map[item]["name"] for item in dinner],
             "overnight_names": [participant_map[item]["name"] for item in overnight],
+            "dinner_absent_names": [
+                participant_map[item]["name"] for item in dinner_absent
+            ],
+            "overnight_absent_names": [
+                participant_map[item]["name"] for item in overnight_absent
+            ],
+            "dinner_addition_names": [
+                participant_map[item]["name"] for item in dinner_additions
+            ],
+            "overnight_addition_names": [
+                participant_map[item]["name"] for item in overnight_additions
+            ],
+            "has_deviations": bool(
+                dinner_absent
+                or overnight_absent
+                or dinner_additions
+                or overnight_additions
+            ),
             "dinner_count": len(dinner),
             "overnight_count": len(overnight),
         }
@@ -496,6 +556,39 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
         for key in ("dinner", "overnight", ATTR_DINNER_ABSENT, ATTR_OVERNIGHT_ABSENT):
             day.setdefault(key, [])
             day[key].sort(key=lambda participant_id: order.get(participant_id, 9999))
+
+    def _clear_participant_overrides(
+        self,
+        participant_id: str,
+        present_key: str,
+        absent_key: str,
+    ) -> None:
+        for day in self._data.get(ATTR_DAYS, {}).values():
+            if not isinstance(day, dict):
+                continue
+            self._set_membership(day.setdefault(present_key, []), participant_id, False)
+            self._set_membership(day.setdefault(absent_key, []), participant_id, False)
+
+    def _canonicalize_day_overrides(self, day: dict[str, list[str]]) -> None:
+        defaults = {
+            str(participant.get("id")): participant
+            for participant in self._data.get(ATTR_PARTICIPANTS, [])
+            if isinstance(participant, dict)
+        }
+        for present_key, absent_key, default_key in (
+            ("dinner", ATTR_DINNER_ABSENT, ATTR_DEFAULT_DINNER),
+            ("overnight", ATTR_OVERNIGHT_ABSENT, ATTR_DEFAULT_OVERNIGHT),
+        ):
+            day[present_key] = [
+                participant_id
+                for participant_id in day.get(present_key, [])
+                if not bool(defaults[participant_id].get(default_key, False))
+            ]
+            day[absent_key] = [
+                participant_id
+                for participant_id in day.get(absent_key, [])
+                if bool(defaults[participant_id].get(default_key, False))
+            ]
 
     async def _save_and_publish(self) -> None:
         self._normalize()
@@ -593,7 +686,7 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
         pruned: dict[str, dict[str, list[str]]] = {}
         for date_key, day in days.items():
             day_date = self._date_from_key(date_key)
-            if earliest <= day_date <= latest:
+            if earliest <= day_date <= latest and any(day.values()):
                 pruned[date_key] = day
         return pruned
 
@@ -637,6 +730,22 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
                 public_ids.append(participant_id)
 
         return public_ids
+
+    @staticmethod
+    def _public_override_ids(
+        day: dict[str, list[str]],
+        participant_map: dict[str, dict[str, Any]],
+        override_key: str,
+        default_key: str,
+        default_value: bool,
+    ) -> list[str]:
+        return [
+            participant_id
+            for participant_id in day.get(override_key, [])
+            if participant_id in participant_map
+            and bool(participant_map[participant_id].get(default_key, False))
+            is default_value
+        ]
 
     @staticmethod
     def _set_membership(items: list[str], participant_id: str, enabled: bool) -> None:

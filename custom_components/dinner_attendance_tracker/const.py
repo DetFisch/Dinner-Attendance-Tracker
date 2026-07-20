@@ -58,6 +58,8 @@ ATTR_DINNER_COUNT_TODAY = "dinner_count_today"
 ATTR_OVERNIGHT_COUNT_TODAY = "overnight_count_today"
 ATTR_DINNER_ABSENT = "dinner_absent"
 ATTR_OVERNIGHT_ABSENT = "overnight_absent"
+ATTR_DINNER_ADDITIONS = "dinner_additions"
+ATTR_OVERNIGHT_ADDITIONS = "overnight_additions"
 ATTR_DEFAULT_DINNER = "default_dinner"
 ATTR_DEFAULT_OVERNIGHT = "default_overnight"
 
