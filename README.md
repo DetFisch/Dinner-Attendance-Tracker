@@ -14,7 +14,7 @@ Home Assistant Custom Integration mit gebündelter Lovelace-Card für einen einf
 2. Home Assistant neu starten.
 3. Integration hinzufügen: `Einstellungen` > `Geräte & Dienste` > `Integration hinzufügen` > `Dinner Attendance Tracker`. Es wird automatisch ein Tracker `dinner_attendance` angelegt.
 4. Lovelace Resource hinzufügen:
-   - URL: `/dinner_attendance_tracker/dinner-attendance-card.js?v=0.3.0`
+   - URL: `/dinner_attendance_tracker/dinner-attendance-card.js?v=0.3.1`
    - Typ: `module`
 5. Browser Hard-Reload (`Ctrl+F5`).
 
@@ -35,18 +35,16 @@ entity: sensor.dinner_attendance
 name: Abendessen
 ```
 
-Optional mit `Ich`-Schnellzugriff und Standard-Anwesenheit direkt in YAML:
+Optional mit `Ich`-Schnellzugriff und Bewohnern direkt in YAML:
 
 ```yaml
 type: custom:dinner-attendance-card
 entity: sensor.dinner_attendance
 name: Abendessen
 me_entity: person.jon
-default_dinner:
+residents:
   - person.jon
   - person.alex
-default_overnight:
-  - person.jon
 ```
 
 ## Nutzung
@@ -56,18 +54,18 @@ Die Karte zeigt die nächsten sieben Tage ab heute mit zwei Zeilen für Abweichu
 - Rot und durchgestrichen: eine Standardperson hat sich für Essen oder Nacht abgemeldet
 - Blau: eine zusätzliche Person oder ein Gast ist für Essen oder Nacht angemeldet
 
-Bleibt eine Zeile leer, gilt für diesen Tag der normale `Immer Essen`-/`Immer Nacht`-Standard. Es wird deshalb nicht mehr `Niemand` angezeigt.
+Bleibt eine Zeile leer, gilt für diesen Tag der normale Bewohner-Standard. Es wird deshalb nicht mehr `Niemand` angezeigt.
 
 Ein Klick auf einen Wochentag öffnet den Editor als Popup. Oben steht, falls konfiguriert, der `Ich`-Schnellzugriff. Darunter kannst du andere Home Assistant Personen und Gäste verwalten.
 
 Wenn `Ich` nicht in YAML gesetzt ist, kannst du im Popup einmal eine Home Assistant Person als `Ich` für dieses Dashboard festlegen. Diese Auswahl wird lokal im Browser gespeichert.
 
-Standardpersonen kannst du ebenfalls im Popup setzen:
+Bewohner kannst du ebenfalls im Popup setzen:
 
-- beim Hinzufügen einer Home Assistant Person die Checkboxen `Immer Essen` und `Immer Nacht` aktivieren
-- bei bereits vorhandenen Personen die Buttons `Immer Essen` und `Immer Nacht` verwenden
+- beim Hinzufügen einer Home Assistant Person die Checkbox `Bewohner` aktivieren
+- bei bereits vorhandenen Personen den Button `Bewohner` verwenden
 
-Standardpersonen sind automatisch eingetragen. Änderungen im Popup sind einmalige Ausnahmen für das konkrete Datum, nicht für alle gleichen Wochentage.
+Bewohner sind automatisch für Essen und Nacht eingetragen. Werden Essen oder Nacht im Popup abgewählt, gilt diese Abmeldung einmalig für das konkrete Datum.
 
 ## Services
 
@@ -76,6 +74,7 @@ Alle Services akzeptieren optional `entity_id`, falls mehrere Tracker existieren
 - `dinner_attendance_tracker.add_person`
 - `dinner_attendance_tracker.add_guest`
 - `dinner_attendance_tracker.remove_participant`
+- `dinner_attendance_tracker.set_resident`
 - `dinner_attendance_tracker.set_person_defaults`
 - `dinner_attendance_tracker.set_attendance`
 - `dinner_attendance_tracker.clear_day`

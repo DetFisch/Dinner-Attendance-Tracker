@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.3.0"
+const DAT_CARD_VERSION = "0.3.1"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -19,6 +19,7 @@ class DinnerAttendanceCard extends HTMLElement {
       entity: config.entity || null,
       me_entity: configuredMe || this._storedMeEntity(config.entity || "auto"),
       me_entity_configured: Boolean(configuredMe),
+      residents: this._entityList(config.residents || config.resident_entities),
       default_dinner: this._entityList(config.default_dinner || config.default_dinner_entities),
       default_overnight: this._entityList(config.default_overnight || config.default_overnight_entities),
       defaults: Array.isArray(config.defaults) ? config.defaults : []
@@ -343,23 +344,22 @@ class DinnerAttendanceCard extends HTMLElement {
           justify-content: flex-end;
         }
 
-        .default-group {
+        .resident-group {
           display: flex;
-          gap: 4px;
           flex-wrap: nowrap;
           justify-content: flex-end;
         }
 
-        .default-toggle {
+        .resident-toggle {
           min-height: 28px;
-          padding: 0 8px;
+          padding: 0 10px;
           font-size: 0.74rem;
           color: var(--secondary-text-color);
           line-height: 1;
           white-space: nowrap;
         }
 
-        .default-toggle[aria-pressed="true"] {
+        .resident-toggle[aria-pressed="true"] {
           border-color: var(--primary-color);
           color: var(--primary-text-color);
           background: color-mix(in srgb, var(--primary-color) 18%, transparent);
@@ -573,7 +573,7 @@ class DinnerAttendanceCard extends HTMLElement {
             grid-template-columns: minmax(0, 1fr);
           }
 
-          .default-group {
+          .resident-group {
             justify-content: flex-start;
             flex-wrap: wrap;
           }
@@ -694,9 +694,9 @@ class DinnerAttendanceCard extends HTMLElement {
         return
       }
 
-      const defaultToggle = target.closest("[data-default-action]")
-      if (defaultToggle) {
-        this._handleDefaultToggle(defaultToggle)
+      const residentToggle = target.closest("[data-resident-toggle]")
+      if (residentToggle) {
+        this._handleResidentToggle(residentToggle)
         return
       }
 
@@ -929,12 +929,8 @@ class DinnerAttendanceCard extends HTMLElement {
               <button class="text-button" data-add-person="${entityId}" type="button">Hinzufügen</button>
               <div class="add-options">
                 <label class="check-option">
-                  <input data-person-default-dinner type="checkbox">
-                  Immer Essen
-                </label>
-                <label class="check-option">
-                  <input data-person-default-overnight type="checkbox">
-                  Immer Nacht
+                  <input data-person-resident type="checkbox">
+                  Bewohner
                 </label>
               </div>
             </div>
@@ -1010,7 +1006,7 @@ class DinnerAttendanceCard extends HTMLElement {
             <div class="participant-name" title="${this._escapeAttr(participant.name)}">${escapedName}</div>
             ${meta ? `<div class="participant-meta">${meta}</div>` : ""}
           </div>
-          ${this._renderDefaultControls(participant)}
+          ${this._renderResidentControl(participant)}
         </div>
         <div class="toggle-group">
           <button
@@ -1057,7 +1053,7 @@ class DinnerAttendanceCard extends HTMLElement {
     return ""
   }
 
-  _renderDefaultControls(participant) {
+  _renderResidentControl(participant) {
     if (participant.type !== "person") {
       return ""
     }
@@ -1066,23 +1062,15 @@ class DinnerAttendanceCard extends HTMLElement {
       : ""
 
     return `
-      <div class="default-group">
+      <div class="resident-group">
         <button
-          class="default-toggle"
-          data-default-action="dinner"
+          class="resident-toggle"
+          data-resident-toggle
           data-participant-id="${this._escapeAttr(participant.id)}"
           ${ensureAttr}
-          aria-pressed="${participant.default_dinner ? "true" : "false"}"
+          aria-pressed="${participant.resident || (participant.default_dinner && participant.default_overnight) ? "true" : "false"}"
           type="button"
-        >Immer Essen</button>
-        <button
-          class="default-toggle"
-          data-default-action="overnight"
-          data-participant-id="${this._escapeAttr(participant.id)}"
-          ${ensureAttr}
-          aria-pressed="${participant.default_overnight ? "true" : "false"}"
-          type="button"
-        >Immer Nacht</button>
+        >Bewohner</button>
       </div>
     `
   }
@@ -1130,13 +1118,12 @@ class DinnerAttendanceCard extends HTMLElement {
     }
 
     await this._callService("add_person", { person_entity_id: personEntityId })
-    const defaultDinner = Boolean(row?.querySelector("[data-person-default-dinner]")?.checked || this.querySelector("#person-default-dinner")?.checked)
-    const defaultOvernight = Boolean(row?.querySelector("[data-person-default-overnight]")?.checked || this.querySelector("#person-default-overnight")?.checked)
-    if (defaultDinner || defaultOvernight) {
-      await this._callService("set_person_defaults", {
+    const residentCheckbox = row?.querySelector("[data-person-resident]")
+    const resident = Boolean(residentCheckbox?.checked)
+    if (resident) {
+      await this._callService("set_resident", {
         participant_id: personEntityId,
-        default_dinner: defaultDinner,
-        default_overnight: defaultOvernight
+        resident: true
       })
     } else {
       await this._applyConfiguredDefault(personEntityId)
@@ -1144,13 +1131,8 @@ class DinnerAttendanceCard extends HTMLElement {
     if (select) {
       select.value = ""
     }
-    const dinnerCheckbox = row?.querySelector("[data-person-default-dinner]") || this.querySelector("#person-default-dinner")
-    const overnightCheckbox = row?.querySelector("[data-person-default-overnight]") || this.querySelector("#person-default-overnight")
-    if (dinnerCheckbox) {
-      dinnerCheckbox.checked = false
-    }
-    if (overnightCheckbox) {
-      overnightCheckbox.checked = false
+    if (residentCheckbox) {
+      residentCheckbox.checked = false
     }
   }
 
@@ -1180,9 +1162,8 @@ class DinnerAttendanceCard extends HTMLElement {
     this._renderState()
   }
 
-  async _handleDefaultToggle(toggle) {
+  async _handleResidentToggle(toggle) {
     const participantId = toggle.getAttribute("data-participant-id")
-    const action = toggle.getAttribute("data-default-action")
     const personEntityId = toggle.getAttribute("data-person-entity-id")
     let participant = this._participantById(participantId)
     if (!participant && personEntityId) {
@@ -1194,16 +1175,31 @@ class DinnerAttendanceCard extends HTMLElement {
         default_overnight: false
       }
     }
-    if (!participant || participant.type !== "person" || !action) {
+    if (!participant || participant.type !== "person") {
       return
     }
 
     const nextValue = toggle.getAttribute("aria-pressed") !== "true"
-    await this._callService("set_person_defaults", {
+    const attendanceToggles = Array.from(
+      toggle.closest?.(".participant-row")?.querySelectorAll("[data-attendance-action]") || []
+    )
+    const previousAttendanceStates = attendanceToggles.map((attendanceToggle) => (
+      attendanceToggle.getAttribute("aria-pressed")
+    ))
+    toggle.setAttribute("aria-pressed", nextValue ? "true" : "false")
+    for (const attendanceToggle of attendanceToggles) {
+      attendanceToggle.setAttribute("aria-pressed", nextValue ? "true" : "false")
+    }
+    const success = await this._callService("set_resident", {
       participant_id: participantId,
-      default_dinner: action === "dinner" ? nextValue : Boolean(participant.default_dinner),
-      default_overnight: action === "overnight" ? nextValue : Boolean(participant.default_overnight)
+      resident: nextValue
     })
+    if (!success) {
+      toggle.setAttribute("aria-pressed", nextValue ? "false" : "true")
+      attendanceToggles.forEach((attendanceToggle, index) => {
+        attendanceToggle.setAttribute("aria-pressed", previousAttendanceStates[index])
+      })
+    }
   }
 
   async _handleAddGuest() {
@@ -1279,6 +1275,14 @@ class DinnerAttendanceCard extends HTMLElement {
       return
     }
 
+    if (Boolean(configured.dinner) === Boolean(configured.overnight)) {
+      await this._callService("set_resident", {
+        participant_id: personEntityId,
+        resident: Boolean(configured.dinner)
+      }, options)
+      return
+    }
+
     await this._callService("set_person_defaults", {
       participant_id: personEntityId,
       default_dinner: Boolean(configured.dinner),
@@ -1296,10 +1300,12 @@ class DinnerAttendanceCard extends HTMLElement {
       if (!options.silent) {
         this._setStatus("", false)
       }
+      return true
     } catch (error) {
       if (!options.silent) {
         this._setStatus(`Fehler: ${error?.message || error}`, true)
       }
+      return false
     }
   }
 
@@ -1473,6 +1479,9 @@ class DinnerAttendanceCard extends HTMLElement {
 
   _configuredDefaults() {
     const defaults = new Map()
+    for (const entityId of this._config.residents) {
+      defaults.set(entityId, { dinner: true, overnight: true })
+    }
     for (const entityId of this._config.default_dinner) {
       defaults.set(entityId, { ...(defaults.get(entityId) || {}), dinner: true })
     }

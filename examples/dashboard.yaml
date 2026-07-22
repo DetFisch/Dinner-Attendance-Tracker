@@ -7,7 +7,5 @@ views:
         entity: sensor.dinner_attendance
         name: Abendessen
         me_entity: person.jon
-        default_dinner:
-          - person.jon
-        default_overnight:
+        residents:
           - person.jon

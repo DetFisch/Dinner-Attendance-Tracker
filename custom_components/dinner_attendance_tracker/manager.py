@@ -28,6 +28,7 @@ from .const import (
     ATTR_OVERNIGHT_COUNT_TODAY,
     ATTR_OVERNIGHT_TODAY,
     ATTR_PARTICIPANTS,
+    ATTR_RESIDENT,
     ATTR_TODAY,
     ATTR_TODAY_KEY,
     CONF_ID,
@@ -164,6 +165,33 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
                 )
             participant[ATTR_DEFAULT_OVERNIGHT] = new_default_overnight
 
+        await self._save_and_publish()
+
+    async def async_set_resident(self, participant_id: str, resident: bool) -> None:
+        """Enable or disable absence-based tracking for a person."""
+        participant = self._get_participant(participant_id)
+        if participant.get("type") != PARTICIPANT_TYPE_PERSON:
+            raise HomeAssistantError("resident status is only supported for person participants")
+
+        resident = bool(resident)
+        defaults_match = (
+            bool(participant.get(ATTR_DEFAULT_DINNER, False)) == resident
+            and bool(participant.get(ATTR_DEFAULT_OVERNIGHT, False)) == resident
+        )
+        if not defaults_match:
+            self._clear_participant_overrides(
+                participant_id,
+                "dinner",
+                ATTR_DINNER_ABSENT,
+            )
+            self._clear_participant_overrides(
+                participant_id,
+                "overnight",
+                ATTR_OVERNIGHT_ABSENT,
+            )
+
+        participant[ATTR_DEFAULT_DINNER] = resident
+        participant[ATTR_DEFAULT_OVERNIGHT] = resident
         await self._save_and_publish()
 
     async def async_add_guest(self, name: str) -> None:
@@ -501,6 +529,8 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
                 "entity_id": entity_id,
                 ATTR_DEFAULT_DINNER: bool(participant.get(ATTR_DEFAULT_DINNER, False)),
                 ATTR_DEFAULT_OVERNIGHT: bool(participant.get(ATTR_DEFAULT_OVERNIGHT, False)),
+                ATTR_RESIDENT: bool(participant.get(ATTR_DEFAULT_DINNER, False))
+                and bool(participant.get(ATTR_DEFAULT_OVERNIGHT, False)),
             }
 
         return {
@@ -509,6 +539,7 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
             "name": self._normalize_name(participant.get("name")),
             ATTR_DEFAULT_DINNER: False,
             ATTR_DEFAULT_OVERNIGHT: False,
+            ATTR_RESIDENT: False,
         }
 
     def _display_name_from_person(self, entity_id: str, fallback: Any = None) -> str:

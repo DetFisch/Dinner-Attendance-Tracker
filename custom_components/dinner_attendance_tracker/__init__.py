@@ -29,11 +29,13 @@ from .const import (
     FIELD_OVERNIGHT,
     FIELD_PARTICIPANT_ID,
     FIELD_PERSON_ENTITY_ID,
+    FIELD_RESIDENT,
     SERVICE_ADD_GUEST,
     SERVICE_ADD_PERSON,
     SERVICE_CLEAR_DAY,
     SERVICE_REMOVE_PARTICIPANT,
     SERVICE_RESET_WEEK,
+    SERVICE_SET_RESIDENT,
     SERVICE_SET_PERSON_DEFAULTS,
     SERVICE_SET_ATTENDANCE,
 )
@@ -149,6 +151,7 @@ async def async_unload_entry(hass: Any, entry: Any) -> bool:
             SERVICE_ADD_PERSON,
             SERVICE_ADD_GUEST,
             SERVICE_REMOVE_PARTICIPANT,
+            SERVICE_SET_RESIDENT,
             SERVICE_SET_PERSON_DEFAULTS,
             SERVICE_SET_ATTENDANCE,
             SERVICE_CLEAR_DAY,
@@ -238,6 +241,13 @@ def _register_services(hass: Any) -> None:
             vol.Optional(FIELD_DEFAULT_OVERNIGHT): vol.Coerce(bool),
         }
     )
+    service_schema_set_resident = vol.Schema(
+        {
+            vol.Optional(FIELD_ENTITY_ID): str,
+            vol.Required(FIELD_PARTICIPANT_ID): str,
+            vol.Required(FIELD_RESIDENT): vol.Coerce(bool),
+        }
+    )
     service_schema_set_attendance = vol.Schema(
         {
             vol.Optional(FIELD_ENTITY_ID): str,
@@ -278,6 +288,13 @@ def _register_services(hass: Any) -> None:
             str(call.data[FIELD_PARTICIPANT_ID]),
             default_dinner=call.data.get(FIELD_DEFAULT_DINNER),
             default_overnight=call.data.get(FIELD_DEFAULT_OVERNIGHT),
+        )
+
+    async def handle_set_resident(call: Any) -> None:
+        manager = _resolve_manager(hass, call.data)
+        await manager.async_set_resident(
+            str(call.data[FIELD_PARTICIPANT_ID]),
+            bool(call.data[FIELD_RESIDENT]),
         )
 
     async def handle_set_attendance(call: Any) -> None:
@@ -321,6 +338,12 @@ def _register_services(hass: Any) -> None:
         SERVICE_SET_PERSON_DEFAULTS,
         handle_set_person_defaults,
         schema=service_schema_set_person_defaults,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_RESIDENT,
+        handle_set_resident,
+        schema=service_schema_set_resident,
     )
     hass.services.async_register(
         DOMAIN,

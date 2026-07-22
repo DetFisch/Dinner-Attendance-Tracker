@@ -81,6 +81,29 @@ set_person_defaults:
       selector:
         boolean:
 
+set_resident:
+  name: Bewohnerstatus setzen
+  description: Bewohner sind standardmäßig jeden Tag zum Abendessen da und übernachten. Änderungen an einzelnen Tagen sind Abmeldungen.
+  fields:
+    entity_id:
+      name: Tracker Entity
+      description: Sensor des Dinner Attendance Trackers. Nur nötig, wenn mehrere Tracker existieren.
+      selector:
+        entity:
+          domain: sensor
+    participant_id:
+      name: Person-ID
+      description: ID der Home Assistant person-Entity, z. B. person.jon.
+      required: true
+      selector:
+        entity:
+          domain: person
+    resident:
+      name: Bewohner
+      required: true
+      selector:
+        boolean:
+
 set_attendance:
   name: Anwesenheit setzen
   description: Setzt Abendessen und/oder Übernachtung für einen Teilnehmer an einem konkreten Datum. Ohne date wird der Wochentag der aktuellen Kalenderwoche verwendet.
