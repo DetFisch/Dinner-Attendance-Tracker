@@ -10,7 +10,7 @@ from uuid import uuid4
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
@@ -632,23 +632,16 @@ class DinnerAttendanceManager(DataUpdateCoordinator[dict[str, Any]]):
     def _schedule_date_refresh(self) -> None:
         if self._unsub_date_refresh is not None:
             self._unsub_date_refresh()
-        now = dt_util.now()
-        next_midnight = (now + timedelta(days=1)).replace(
+        self._unsub_date_refresh = async_track_time_change(
+            self.hass,
+            self._handle_date_refresh,
             hour=0,
             minute=0,
             second=1,
-            microsecond=0,
-        )
-        delay = max(1, (next_midnight - now).total_seconds())
-        self._unsub_date_refresh = async_call_later(
-            self.hass,
-            delay,
-            self._handle_date_refresh,
         )
 
     def _handle_date_refresh(self, _now: Any) -> None:
         self.async_set_updated_data(self._public_data())
-        self._schedule_date_refresh()
 
     @staticmethod
     def _empty_day() -> dict[str, list[str]]:

@@ -1,5 +1,5 @@
 const DAT_DOMAIN = "dinner_attendance_tracker"
-const DAT_CARD_VERSION = "0.3.1"
+const DAT_CARD_VERSION = "0.3.2"
 const DAT_DEFAULT_TITLE = "Dinner Attendance"
 const DAT_DAYS = [
   { key: "mon", short: "Mo", name: "Montag" },
@@ -1388,29 +1388,7 @@ class DinnerAttendanceCard extends HTMLElement {
   }
 
   _visibleDays() {
-    const sensorDateKeys = Object.keys(this._days())
-      .filter((key) => /^\d{4}-\d{2}-\d{2}$/.test(key))
-      .sort()
-      .slice(0, 7)
-    if (sensorDateKeys.length === 7) {
-      return sensorDateKeys.map((dateKey, offset) => {
-        const [year, month, dayOfMonth] = dateKey.split("-").map(Number)
-        const date = new Date(year, month - 1, dayOfMonth)
-        const baseDay = DAT_DAYS[(date.getDay() + 6) % 7]
-        const dateLabel = this._formatDateLabel(date)
-        return {
-          ...baseDay,
-          date,
-          dateKey,
-          dateLabel,
-          isToday: offset === 0,
-          title: `${baseDay.name} ${dateLabel}`
-        }
-      })
-    }
-
-    const today = new Date()
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const todayStart = this._todayDate()
     const todayIndex = (todayStart.getDay() + 6) % 7
 
     return Array.from({ length: 7 }, (_item, offset) => {
@@ -1428,6 +1406,26 @@ class DinnerAttendanceCard extends HTMLElement {
         title: `${baseDay.name} ${dateLabel}`
       }
     })
+  }
+
+  _todayDate() {
+    const now = new Date()
+    const timeZone = this._hass?.config?.time_zone
+    if (timeZone && globalThis.Intl?.DateTimeFormat) {
+      try {
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit"
+        }).formatToParts(now)
+        const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+        return new Date(Number(values.year), Number(values.month) - 1, Number(values.day))
+      } catch (_error) {
+        // Fall back to the browser date if the configured timezone is unavailable.
+      }
+    }
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
   }
 
   _formatDateLabel(date) {
